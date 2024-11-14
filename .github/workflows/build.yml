@@ -12,7 +12,14 @@ on:
 jobs:
 
   build:
-    runs-on: ubuntu-latest
+    
+    strategy:
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+        arch: [amd64, arm64]
+        
+    runs-on: ${{ matrix.os }}
+
     steps:
     - uses: actions/checkout@v4
 
@@ -25,8 +32,22 @@ jobs:
       id: get_version
       run: echo "VERSION=$(git describe --tags --always)" >> $GITHUB_ENV
 
+    - name: Set up arch
+      run: |
+        if [ "${{ matrix.arch }}" == "arm64" ]; then
+          sudo dpkg --add-architecture arm64
+          sudo apt-get update
+          sudo apt-get install -y gcc-aarch64-linux-gnu
+        fi
+
     - name: Build
-      run: go build -v -o ./target/ngamm-${{ env.VERSION }} ./...
+      run: |
+        mkdir -p ./build
+        if [ "${{ matrix.arch }}" == "arm64" ]; then
+          GOARCH=arm64 go build -v -o ./build/ngamm-${{ matrix.os }}-arm64-${{ env.VERSION }} ./...
+        else
+          GOARCH=amd64 go build -v -o ./build/ngamm-${{ matrix.os }}-amd64-${{ env.VERSION }} ./...
+        fi
 
     - name: Test
       run: go test -v ./...

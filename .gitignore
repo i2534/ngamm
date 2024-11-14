@@ -28,3 +28,4 @@ go.work.sum
 # other
 program
 target
+build
