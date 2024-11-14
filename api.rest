@@ -1,0 +1,30 @@
+@host = localhost
+@port = 5842
+
+@url = http://{{host}}:{{port}}
+
+### Help
+GET {{url}}/help
+
+#### Topics(帖子)
+### List
+GET {{url}}/topic
+
+@tid = 1
+### Info
+GET {{url}}/topic/{{tid}}
+
+@tid = 42382666
+### Create
+PUT {{url}}/topic/{{tid}}
+
+### Delete
+DELETE {{url}}/topic/{{tid}}
+
+### Update
+POST {{url}}/topic/{{tid}}
+Content-Type: application/json
+
+{
+    "UpdateCron": "@every 2m"
+}
