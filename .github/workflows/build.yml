@@ -43,9 +43,9 @@ jobs:
     - name: Build
       run: |
         if [ "${{ matrix.arch }}" == "arm64" ]; then
-          GOARCH=arm64 go build -v -o ngamm-${{ matrix.os }}-arm64-${{ env.VERSION }} ./...
+          GOARCH=arm64 go build -v -o ./build/ngamm-${{ matrix.os }}-arm64-${{ env.VERSION }}
         else
-          GOARCH=amd64 go build -v -o ngamm-${{ matrix.os }}-amd64-${{ env.VERSION }} ./...
+          GOARCH=amd64 go build -v -o ./build/ngamm-${{ matrix.os }}-amd64-${{ env.VERSION }}
         fi
 
     - name: Test
