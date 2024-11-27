@@ -35,14 +35,6 @@ jobs:
       id: get_version
       run: echo "VERSION=$(git describe --tags --always)" >> $GITHUB_ENV
 
-    # - name: Set up arch
-    #   run: |
-    #     if [ "${{ matrix.arch }}" == "arm64" ]; then
-    #       sudo dpkg --add-architecture arm64
-    #       sudo apt-get update
-    #       sudo apt-get install -y gcc-aarch64-linux-gnu
-    #     fi
-
     - name: Build
       run: |
         if [ "${{ matrix.arch }}" == "arm64" ]; then
@@ -53,3 +45,9 @@ jobs:
 
     - name: Test
       run: go test -v ./...
+
+    - name: Upload Build Artifacts
+      uses: actions/upload-artifact@v3
+      with:
+        name: build-artifacts
+        path: ./build/
