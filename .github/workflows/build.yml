@@ -38,16 +38,16 @@ jobs:
     - name: Build
       run: |
         if [ "${{ matrix.arch }}" == "arm64" ]; then
-          GOARCH=arm64 go build -v -o ./build/ngamm-${{ matrix.os }}-arm64-${{ env.VERSION }}
+          GOARCH=arm64 go build -v -o ./build/ngamm-arm64-${{ env.VERSION }}
         else
-          GOARCH=amd64 go build -v -o ./build/ngamm-${{ matrix.os }}-amd64-${{ env.VERSION }}
+          GOARCH=amd64 go build -v -o ./build/ngamm-amd64-${{ env.VERSION }}
         fi
 
     - name: Test
       run: go test -v ./...
 
     - name: Upload Build Artifacts
-      uses: actions/upload-artifact@v3
+      uses: actions/upload-artifact@v4
       with:
         name: build-artifacts
         path: ./build/
