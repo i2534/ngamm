@@ -55,12 +55,8 @@ type Topic struct {
 	root     string
 }
 
-func LoadTopic(id int) (*Topic, error) {
-	dir := nga.FindFolderNameByTid(id, AUTHOR_ID)
-	if dir == "" {
-		return nil, fmt.Errorf("no folder for topic: %d", id)
-	}
-
+func LoadTopic(root string, id int) (*Topic, error) {
+	dir := filepath.Join(root, strconv.Itoa(id))
 	log.Printf("Loading topic %d from %s\n", id, dir)
 
 	md := filepath.Join(dir, POST_MARKDOWN)
@@ -156,7 +152,7 @@ func (c *cache) close() {
 type Server struct {
 	Raw     *http.Server
 	Cfg     *Config
-	nga     *ClientExt
+	nga     *Client
 	stop    chan struct{}
 	stopped bool
 	lock    *sync.Mutex
@@ -164,7 +160,7 @@ type Server struct {
 	cron    *cron.Cron
 }
 
-func NewServer(cfg *Config, nga *ClientExt) (*Server, error) {
+func NewServer(cfg *Config, nga *Client) (*Server, error) {
 	// 创建 Gin 路由器
 	r := gin.Default()
 	as, err := time.LoadLocation("Asia/Shanghai")
@@ -225,7 +221,8 @@ func (s *Server) loadTopics() {
 		return
 	}
 
-	files, err := os.ReadDir(DIR_TOPIC_ROOT)
+	dir := filepath.Join(s.nga.GetRoot(), DIR_TOPIC_ROOT)
+	files, err := os.ReadDir(dir)
 	if err != nil {
 		log.Println("Failed to read topic root dir:", err)
 	} else {
@@ -241,7 +238,7 @@ func (s *Server) loadTopics() {
 				continue
 			}
 
-			topic, err := LoadTopic(id)
+			topic, err := LoadTopic(dir, id)
 
 			if err != nil {
 				log.Println("Failed to load topic", err)
@@ -428,23 +425,16 @@ func (s *Server) process() {
 	for id := range cache.queue {
 		log.Println("Processing topic", id)
 
-		aid := 0
-		tie := nga.Tiezi{}
-		path := nga.FindFolderNameByTid(id, aid)
-		if path != "" {
-			tie.InitFromLocal(id, aid)
-		} else {
-			tie.InitFromWeb(id, aid)
-		}
-		tie.Download()
-
-		topic, err := LoadTopic(id)
-		if err != nil {
-			log.Println("Failed to load topic", err)
-		} else {
-			cache.lock.Lock()
-			cache.topics[id] = topic
-			cache.lock.Unlock()
+		dir := filepath.Join(s.nga.GetRoot(), DIR_TOPIC_ROOT)
+		if s.nga.Download(id) {
+			topic, err := LoadTopic(dir, id)
+			if err != nil {
+				log.Println("Failed to load topic", err)
+			} else {
+				cache.lock.Lock()
+				cache.topics[id] = topic
+				cache.lock.Unlock()
+			}
 		}
 	}
 }

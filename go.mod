@@ -7,6 +7,7 @@ require (
 	github.com/gin-gonic/gin v1.10.0
 	github.com/jessevdk/go-flags v1.6.1
 	github.com/ludoux/ngapost2md v0.0.0-20240621120033-e0c5a18bb479
+	github.com/robfig/cron/v3 v3.0.1
 	gopkg.in/ini.v1 v1.67.0
 )
 
@@ -42,7 +43,6 @@ require (
 	github.com/quic-go/qpack v0.4.0 // indirect
 	github.com/quic-go/quic-go v0.45.0 // indirect
 	github.com/refraction-networking/utls v1.6.6 // indirect
-	github.com/robfig/cron/v3 v3.0.1 // indirect
 	github.com/spf13/cast v1.6.0 // indirect
 	github.com/twitchyliquid64/golang-asm v0.15.1 // indirect
 	github.com/ugorji/go/codec v1.2.12 // indirect

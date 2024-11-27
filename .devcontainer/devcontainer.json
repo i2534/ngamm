@@ -1,13 +1,13 @@
 {
   "image": "mcr.microsoft.com/devcontainers/universal:2",
-  "features": {
-  },
+  "features": {},
   "customizations": {
     "vscode": {
       "extensions": [
         "MS-CEINTL.vscode-language-pack-zh-hans",
         "alphabotsec.vscode-eclipse-keybindings",
         "golang.Go",
+        "humao.rest-client",
         "GitHub.copilot",
         "GitHub.copilot-chat"
       ],
