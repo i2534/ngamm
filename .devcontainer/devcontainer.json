@@ -1,6 +1,22 @@
 {
   "image": "mcr.microsoft.com/devcontainers/universal:2",
-  "ghcr.io/devcontainers/features/go:1": {},
   "features": {
+  },
+  "customizations": {
+    "vscode": {
+      "extensions": [
+        "MS-CEINTL.vscode-language-pack-zh-hans",
+        "alphabotsec.vscode-eclipse-keybindings",
+        "golang.Go",
+        "GitHub.copilot",
+        "GitHub.copilot-chat"
+      ],
+      "settings": {
+        "workbench.editor.enablePreview": false,
+        "editor.fontFamily": "'JetBrains Mono', 'Microsoft YaHei Mono', Consolas, 'Courier New', monospace",
+        "editor.formatOnSave": true,
+        "editor.fontSize": 16
+      }
+    }
   }
 }
