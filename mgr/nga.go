@@ -102,6 +102,9 @@ func (c *Client) Download(tid int) (bool, string) {
 	if err != nil {
 		log.Printf("下载主题 %d 出现问题: %s\n", tid, err.Error())
 	} else {
+
+		log.Printf("\n%s", out)
+
 		lines := strings.Split(out, "\n")
 		for i := len(lines) - 1; i >= 0; i-- {
 			line := lines[i]

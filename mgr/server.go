@@ -27,6 +27,7 @@ var (
 	POST_MARKDOWN   = "post.md"
 	PROCESS_INI     = "process.ini"
 	METADATA_JSON   = "metadata.json"
+	ASSETSA_JSON    = "assets.json"
 	QUEUE_SIZE      = 999
 	AUTHOR_ID       = 0
 )
@@ -60,6 +61,7 @@ type Topic struct {
 	MaxFloor int
 	Metadata *Metadata
 	Result   Result
+	assets   map[string]string
 }
 
 func LoadTopic(root string, id int) (*Topic, error) {
@@ -123,6 +125,19 @@ func LoadTopic(root string, id int) (*Topic, error) {
 	}
 	topic.Metadata = meta
 
+	assets := make(map[string]string)
+	af, err := os.ReadFile(filepath.Join(dir, ASSETSA_JSON))
+	if err != nil {
+		if os.IsNotExist(err) {
+			log.Println("No assets found for topic", id)
+		} else {
+			log.Println("Failed to read assets:", err)
+		}
+	} else if err := json.Unmarshal(af, assets); err != nil {
+		log.Println("Failed to parse assets:", err)
+	}
+	topic.assets = assets
+
 	return topic, nil
 }
 
@@ -141,6 +156,15 @@ func (t *Topic) Save() error {
 
 	// 将 JSON 数据写入文件
 	return os.WriteFile(md, data, 0644)
+}
+
+func (t *Topic) Read() (string, error) {
+	md := filepath.Join(t.root, POST_MARKDOWN)
+	data, e := os.ReadFile(md)
+	if e != nil {
+		return "", e
+	}
+	return string(data), nil
 }
 
 type cache struct {
@@ -207,11 +231,17 @@ func (s *Server) init() error {
 	})
 	tg := r.Group("/topic")
 	{
+		tg.GET("", s.topicList())
 		tg.GET("/", s.topicList())
 		tg.GET("/:id", s.topicInfo())
 		tg.PUT("/:id", s.topicAdd())
 		tg.POST("/:id", s.topicUpdate())
 		tg.DELETE("/:id", s.topicDel())
+	}
+	vg := r.Group("/view")
+	{
+		vg.GET("/:id", s.viewTopic())
+		vg.GET("/:id/:name", s.viewTopicRes())
 	}
 
 	return nil
@@ -250,7 +280,7 @@ func (s *Server) loadTopics() {
 			topic, err := LoadTopic(dir, id)
 
 			if err != nil {
-				log.Println("Failed to load topic", err)
+				log.Println("Failed to load topic:", err)
 				continue
 			}
 
@@ -451,7 +481,7 @@ func (s *Server) process() {
 		if ok {
 			topic, err := LoadTopic(s.topicRoot, id)
 			if err != nil {
-				log.Println("Failed to load topic", err)
+				log.Println("Failed to load topic:", err)
 			} else {
 				topic.Result = Result{
 					Success: true,
@@ -474,6 +504,105 @@ func (s *Server) process() {
 			}
 			cache.lock.Unlock()
 		}
+	}
+}
+
+func (s *Server) viewTopicRes() func(c *gin.Context) {
+	return func(c *gin.Context) {
+		id, err := strconv.Atoi(c.Param("id"))
+		if err != nil {
+			c.String(http.StatusBadRequest, "Invalid topic ID")
+			return
+		}
+		name := c.Param("name")
+		if name == "" {
+			c.String(http.StatusBadRequest, "Invalid file name")
+			return
+		}
+
+		cache := s.cache
+		cache.lock.RLock()
+		defer cache.lock.RUnlock()
+
+		topic, exists := cache.topics[id]
+		if !exists {
+			c.String(http.StatusNotFound, "Topic not found")
+			return
+		}
+		assets := topic.assets
+		path, exists := assets[name]
+		if !exists {
+			path = name
+		}
+		dir := topic.root
+		file := filepath.Join(dir, path)
+		data, err := os.ReadFile(file)
+		if err != nil {
+			c.String(http.StatusInternalServerError, "Failed to read asset")
+			return
+		}
+		c.Data(http.StatusOK, "application/octet-stream", data)
+	}
+}
+
+func (s *Server) viewTopic() func(c *gin.Context) {
+	return func(c *gin.Context) {
+		title, markdown := "", ""
+
+		id, err := strconv.Atoi(c.Param("id"))
+		if err != nil {
+			title = "Invalid topic ID"
+		} else {
+			cache := s.cache
+			cache.lock.RLock()
+			defer cache.lock.RUnlock()
+
+			topic, exists := cache.topics[id]
+			if !exists {
+				title = "Topic not found"
+			} else {
+				title = topic.Title
+				markdown, err = topic.Read()
+				if err != nil {
+					title = "Failed to read topic"
+				}
+			}
+		}
+
+		html := `<!DOCTYPE html>
+<html lang="zh">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{title}</title>
+	<style>
+        body {
+            background-color: #f5e8cb;
+        }
+    </style>
+</head>
+<body>
+    <div id="content">{markdown}
+
+----
+	</div>
+	<div>由 <a href="https://github.com/i2534/ngamm" target="_blank">NGAMM</a> 提供支持</div>
+    <script src="https://cdn.jsdelivr.net/npm/marked"></script>
+	<script src="https://cdn.jsdelivr.net/npm/marked-base-url"></script>
+    <script>
+		marked.use(markedBaseUrl.baseUrl(window.location.href + "/"));
+        const id = '{id}';
+        const content = document.querySelector('#content');
+        content.innerHTML = marked.parse(content.innerHTML);
+    </script>
+</body>
+</html>
+`
+		html = strings.ReplaceAll(html, "{id}", strconv.Itoa(id))
+		html = strings.ReplaceAll(html, "{title}", title)
+		html = strings.ReplaceAll(html, "{markdown}", markdown)
+
+		c.Data(http.StatusOK, "text/html; charset=utf-8", []byte(html))
 	}
 }
 

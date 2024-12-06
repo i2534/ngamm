@@ -29,3 +29,6 @@ Content-Type: application/json
 {
     "UpdateCron": "@every 2m"
 }
+
+### View
+GET {{url}}/view/{{tid}}
