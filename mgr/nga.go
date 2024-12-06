@@ -97,7 +97,7 @@ func (c *Client) GetVersion() string {
 //		}
 //		return true
 //	}
-func (c *Client) Download(tid int) bool {
+func (c *Client) Download(tid int) (bool, string) {
 	out, err := c.execute([]string{strconv.Itoa(tid)})
 	if err != nil {
 		log.Printf("下载主题 %d 出现问题: %s\n", tid, err.Error())
@@ -110,16 +110,17 @@ func (c *Client) Download(tid int) bool {
 			}
 			if strings.Contains(line, "任务结束") {
 				log.Printf("下载主题 %d 完成\n", tid)
-				return true
+				return true, ""
 			}
 			i := strings.Index(line, "返回代码不为")
 			if i > 0 {
-				log.Printf("下载主题 %d 出现问题: %s\n", tid, line[i:])
-				break
+				msg := line[i:]
+				log.Printf("下载主题 %d 出现问题: %s\n", tid, msg)
+				return false, msg
 			}
 		}
 	}
-	return false
+	return false, ""
 }
 
 func (c *Client) execute(args []string) (string, error) {

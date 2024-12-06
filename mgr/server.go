@@ -40,11 +40,18 @@ type Metadata struct {
 	updateCronId cron.EntryID
 }
 
+type Result struct {
+	Success bool
+	Message string
+	Time    time.Time
+}
+
 func (m *Metadata) Merge(n *Metadata) {
 	m.UpdateCron = n.UpdateCron
 }
 
 type Topic struct {
+	root     string
 	Id       int
 	Title    string
 	Author   string
@@ -52,7 +59,7 @@ type Topic struct {
 	MaxPage  int
 	MaxFloor int
 	Metadata *Metadata
-	root     string
+	Result   Result
 }
 
 func LoadTopic(root string, id int) (*Topic, error) {
@@ -121,6 +128,9 @@ func LoadTopic(root string, id int) (*Topic, error) {
 
 func (t *Topic) Save() error {
 	dir := t.root
+
+	os.MkdirAll(dir, 0755)
+
 	md := filepath.Join(dir, METADATA_JSON)
 
 	// 将 Metadata 序列化为 JSON
@@ -130,10 +140,7 @@ func (t *Topic) Save() error {
 	}
 
 	// 将 JSON 数据写入文件
-	if err := os.WriteFile(md, data, 0644); err != nil {
-		return err
-	}
-	return nil
+	return os.WriteFile(md, data, 0644)
 }
 
 type cache struct {
@@ -150,14 +157,15 @@ func (c *cache) close() {
 }
 
 type Server struct {
-	Raw     *http.Server
-	Cfg     *Config
-	nga     *Client
-	stop    chan struct{}
-	stopped bool
-	lock    *sync.Mutex
-	cache   *cache
-	cron    *cron.Cron
+	Raw       *http.Server
+	Cfg       *Config
+	nga       *Client
+	stop      chan struct{}
+	stopped   bool
+	lock      *sync.Mutex
+	cache     *cache
+	cron      *cron.Cron
+	topicRoot string
 }
 
 func NewServer(cfg *Config, nga *Client) (*Server, error) {
@@ -181,6 +189,7 @@ func NewServer(cfg *Config, nga *Client) (*Server, error) {
 			lock:  &sync.RWMutex{},
 			queue: make(chan int, QUEUE_SIZE),
 		},
+		topicRoot: filepath.Join(nga.GetRoot(), DIR_TOPIC_ROOT),
 	}
 	e := srv.init()
 	if e != nil {
@@ -221,7 +230,7 @@ func (s *Server) loadTopics() {
 		return
 	}
 
-	dir := filepath.Join(s.nga.GetRoot(), DIR_TOPIC_ROOT)
+	dir := s.topicRoot
 	files, err := os.ReadDir(dir)
 	if err != nil {
 		log.Println("Failed to read topic root dir:", err)
@@ -301,16 +310,29 @@ func (s *Server) topicAdd() func(c *gin.Context) {
 		}
 
 		cache := s.cache
-		cache.lock.RLock()
-		defer cache.lock.RUnlock()
 
+		lock := cache.lock
+
+		lock.RLock()
 		if _, exists := cache.topics[id]; exists {
+			lock.RUnlock()
 			c.JSON(http.StatusConflict, gin.H{"error": "Topic already exists"})
 			return
 		}
+		lock.RUnlock()
 
 		select {
 		case cache.queue <- id:
+			lock.Lock()
+			defer lock.Unlock()
+
+			cache.topics[id] = &Topic{
+				root:     filepath.Join(s.topicRoot, strconv.Itoa(id)),
+				Id:       id,
+				Create:   time.Now(),
+				Metadata: new(Metadata),
+			}
+
 			c.JSON(http.StatusCreated, id)
 			return
 		default:
@@ -425,16 +447,32 @@ func (s *Server) process() {
 	for id := range cache.queue {
 		log.Println("Processing topic", id)
 
-		dir := filepath.Join(s.nga.GetRoot(), DIR_TOPIC_ROOT)
-		if s.nga.Download(id) {
-			topic, err := LoadTopic(dir, id)
+		ok, msg := s.nga.Download(id)
+		if ok {
+			topic, err := LoadTopic(s.topicRoot, id)
 			if err != nil {
 				log.Println("Failed to load topic", err)
 			} else {
+				topic.Result = Result{
+					Success: true,
+					Time:    time.Now(),
+				}
+
 				cache.lock.Lock()
 				cache.topics[id] = topic
 				cache.lock.Unlock()
 			}
+		} else {
+			cache.lock.Lock()
+			topic, exists := cache.topics[id]
+			if exists {
+				topic.Result = Result{
+					Success: false,
+					Message: msg,
+					Time:    time.Now(),
+				}
+			}
+			cache.lock.Unlock()
 		}
 	}
 }

@@ -15,8 +15,7 @@ GET {{url}}/topic
 GET {{url}}/topic/{{tid}}
 
 # Error
-@tid = 42382666
-@tid = 42577242
+@tid = 2
 ### Create
 PUT {{url}}/topic/{{tid}}
 
