@@ -16,6 +16,10 @@
             border-collapse: collapse;
         }
 
+        h2 {
+            margin: 5px;
+        }
+
         th,
         td {
             border: 1px solid #ddd;
@@ -63,20 +67,62 @@
         .update-button:hover {
             background-color: #fb8c00;
         }
+
+        .hidden {
+            display: none;
+        }
+
+        .inline {
+            display: inline-block;
+            margin-right: 10px;
+        }
     </style>
 </head>
 
 <body>
-    <h2>创建帖子</h2>
+    <div id="tokenSection" class="hidden">
+        <h2 class="inline">设置Token</h2>
+        <input type="text" id="authToken" placeholder="Authorization Token">
+        <button onclick="setAuthToken()">设置</button>
+    </div>
+    <h2 class="inline">创建帖子</h2>
     <input type="number" id="createId" placeholder="帖子 ID">
     <button onclick="createTopic()">创建</button>
     <h2>帖子列表</h2>
     <div id="topics"></div>
     <script>
         const baseUrl = window.location.origin;
+        const headers = {};
+        const inputToken = document.getElementById('authToken');
+
+        function setAuthToken() {
+            const token = inputToken.value;
+            if (token && token.trim() !== '') {
+                headers.Authorization = `${token}`;
+                localStorage.setItem('token', token);
+            }
+            listTopics();
+        }
+
+        function loadAuthToken() {
+            const token = localStorage.getItem('token');
+            if (token) {
+                inputToken.value = token;
+                headers.Authorization = token;
+                showTokenSection();
+            }
+        }
+
+        function showTokenSection() {
+            document.getElementById('tokenSection').classList.remove('hidden');
+        }
 
         async function fetchTopics() {
-            const response = await fetch(`${baseUrl}/topic`);
+            const response = await fetch(`${baseUrl}/topic`, { headers });
+            if (response.status === 401) {
+                showTokenSection();
+                throw new Error('需要设置 Token');
+            }
             if (!response.ok) {
                 throw new Error('Failed to fetch topics');
             }
@@ -119,7 +165,7 @@
                 return;
             }
             try {
-                const response = await fetch(`${baseUrl}/topic/${id}`, { method: 'PUT' });
+                const response = await fetch(`${baseUrl}/topic/${id}`, { method: 'PUT', headers });
                 const data = await response.json();
                 if (!response.ok) {
                     throw new Error(data.error);
@@ -134,7 +180,7 @@
         async function deleteTopic(id) {
             if (confirm(`确认要删除帖子 ${id} ?`)) {
                 try {
-                    const response = await fetch(`${baseUrl}/topic/${id}`, { method: 'DELETE' });
+                    const response = await fetch(`${baseUrl}/topic/${id}`, { method: 'DELETE', headers });
                     const data = await response.json();
                     if (!response.ok) {
                         throw new Error(data.error);
@@ -153,7 +199,7 @@
                 try {
                     const response = await fetch(`${baseUrl}/topic/${id}`, {
                         method: 'POST',
-                        headers: { 'Content-Type': 'application/json' },
+                        headers: { ...headers, 'Content-Type': 'application/json' },
                         body: JSON.stringify({ UpdateCron: cron })
                     });
                     const data = await response.json();
@@ -172,7 +218,10 @@
             window.open(`${baseUrl}/view/${id}`, '_blank');
         }
 
-        window.addEventListener('load', listTopics);
+        window.addEventListener('load', () => {
+            loadAuthToken();
+            listTopics();
+        });
     </script>
 </body>
 

@@ -36,7 +36,8 @@ var (
 )
 
 type Config struct {
-	Addr string
+	Addr  string
+	Token string
 }
 
 type Metadata struct {
@@ -229,9 +230,11 @@ func (s *Server) init() error {
 	go s.loadTopics()
 
 	r := s.Raw.Handler.(*gin.Engine)
-	r.GET("/help", func(c *gin.Context) {
-		c.String(http.StatusOK, "Hello, this is NGA Post2md Manager")
-	})
+
+	if s.Cfg.Token != "" {
+		r.Use(s.authMiddleware()) // 添加权限校验中间件
+	}
+
 	tg := r.Group("/topic")
 	{
 		tg.GET("", s.topicList())
@@ -246,9 +249,26 @@ func (s *Server) init() error {
 		vg.GET("/:id", s.viewTopic())
 		vg.GET("/:id/:name", s.viewTopicRes())
 	}
+
 	r.GET("/", s.homePage())
 
 	return nil
+}
+
+func (s *Server) authMiddleware() gin.HandlerFunc {
+	return func(c *gin.Context) {
+		if c.Request.URL.Path == "/" {
+			c.Next()
+			return
+		}
+		token := c.GetHeader("Authorization")
+		if token != s.Cfg.Token { // 简单的权限校验
+			c.JSON(http.StatusUnauthorized, gin.H{"error": "Unauthorized"})
+			c.Abort()
+			return
+		}
+		c.Next()
+	}
 }
 
 func (s *Server) loadTopics() {

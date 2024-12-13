@@ -13,6 +13,7 @@ import (
 type Option struct {
 	Port    int    `short:"p" long:"port" description:"端口号" default:"5842"`
 	Program string `short:"m" long:"program" description:"ngapost2md 程序路径" default:"ngapost2md/main"`
+	Token   string `short:"t" long:"token" description:"设置一个简单的访问令牌, 如果不设置则不需要令牌"`
 }
 
 func main() {
@@ -40,7 +41,11 @@ func main() {
 	}
 
 	addr := fmt.Sprintf(":%d", opts.Port)
-	srv, err := mgr.NewServer(&mgr.Config{Addr: addr}, client)
+	token := opts.Token
+	if token != "" {
+		log.Printf("设置访问令牌: %s\n", token)
+	}
+	srv, err := mgr.NewServer(&mgr.Config{Addr: addr, Token: token}, client)
 	if err != nil {
 		log.Fatalln("初始化服务器出现问题:", err.Error())
 	}

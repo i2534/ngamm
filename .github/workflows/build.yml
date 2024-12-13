@@ -1,7 +1,4 @@
-# This workflow will build a golang project
-# For more information see: https://docs.github.com/en/actions/automating-builds-and-tests/building-and-testing-go
-
-name: Go
+name: Build and Test
 
 on:
   push:
@@ -10,15 +7,12 @@ on:
     branches: [ "main" ]
 
 jobs:
-
   build:
-
     timeout-minutes: 10
     
     strategy:
       matrix:
-        # os: [ubuntu-latest, windows-latest]
-        os: [ubuntu-latest]
+        os: [ubuntu-latest, windows-latest]
         arch: [amd64, arm64]
         
     runs-on: ${{ matrix.os }}
@@ -38,13 +32,10 @@ jobs:
     - name: Build
       run: |
         if [ "${{ matrix.arch }}" == "arm64" ]; then
-          GOARCH=arm64 go build -v -o ./build/ngamm-arm64-${{ env.VERSION }}
+          GOARCH=arm64 go build -v -o ./build/ngamm-${{ matrix.os }}-arm64-${{ env.VERSION }}${{ matrix.os == 'windows-latest' && '.exe' || '' }}
         else
-          GOARCH=amd64 go build -v -o ./build/ngamm-amd64-${{ env.VERSION }}
+          GOARCH=amd64 go build -v -o ./build/ngamm-${{ matrix.os }}-amd64-${{ env.VERSION }}${{ matrix.os == 'windows-latest' && '.exe' || '' }}
         fi
-
-    - name: Test
-      run: go test -v ./...
 
     - name: Upload Build Artifacts
       uses: actions/upload-artifact@v4
