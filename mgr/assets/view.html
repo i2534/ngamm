@@ -1,0 +1,28 @@
+<!DOCTYPE html>
+<html lang="zh">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{{.Title}}</title>
+    <style>
+        body {
+            background-color: #f5e8cb;
+        }
+    </style>
+</head>
+
+<body>
+    <div id="content">{{.Markdown}}</div>
+    <div>由 <a href="https://github.com/i2534/ngamm" target="_blank">NGAMM</a> 提供支持</div>
+    <script src="https://cdn.jsdelivr.net/npm/marked"></script>
+    <script src="https://cdn.jsdelivr.net/npm/marked-base-url"></script>
+    <script>
+        marked.use(markedBaseUrl.baseUrl(window.location.href + "/"));
+        const id = '{{.ID}}';
+        const content = document.querySelector('#content');
+        content.innerHTML = marked.parse(content.innerHTML);
+    </script>
+</body>
+
+</html>

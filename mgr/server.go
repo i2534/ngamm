@@ -2,8 +2,10 @@ package mgr
 
 import (
 	"context"
+	"embed"
 	"encoding/json"
 	"fmt"
+	"html/template"
 	"log"
 	"net/http"
 	"os"
@@ -16,7 +18,6 @@ import (
 	"time"
 
 	"github.com/gin-gonic/gin"
-	"github.com/ludoux/ngapost2md/nga"
 	"github.com/robfig/cron/v3"
 	"gopkg.in/ini.v1"
 )
@@ -28,8 +29,10 @@ var (
 	PROCESS_INI     = "process.ini"
 	METADATA_JSON   = "metadata.json"
 	ASSETSA_JSON    = "assets.json"
+	DELETE_FLAG     = "deleted_at"
 	QUEUE_SIZE      = 999
 	AUTHOR_ID       = 0
+	DELETE_TIME     = 7 * 24
 )
 
 type Config struct {
@@ -133,7 +136,7 @@ func LoadTopic(root string, id int) (*Topic, error) {
 		} else {
 			log.Println("Failed to read assets:", err)
 		}
-	} else if err := json.Unmarshal(af, assets); err != nil {
+	} else if err := json.Unmarshal(af, &assets); err != nil {
 		log.Println("Failed to parse assets:", err)
 	}
 	topic.assets = assets
@@ -243,6 +246,7 @@ func (s *Server) init() error {
 		vg.GET("/:id", s.viewTopic())
 		vg.GET("/:id/:name", s.viewTopicRes())
 	}
+	r.GET("/", s.homePage())
 
 	return nil
 }
@@ -372,6 +376,39 @@ func (s *Server) topicAdd() func(c *gin.Context) {
 	}
 }
 
+func (s *Server) checkRecycleBin() {
+	log.Println("Checking recycle bin...")
+	recycles := filepath.Join(s.topicRoot, DIR_RECYCLE_BIN)
+	files, err := os.ReadDir(recycles)
+	if err != nil {
+		log.Println("Failed to read recycle bin:", err)
+		return
+	}
+	for _, file := range files {
+		if !file.IsDir() {
+			continue
+		}
+		name := file.Name()
+		tar := filepath.Join(recycles, name)
+		data, err := os.ReadFile(filepath.Join(tar, DELETE_FLAG))
+		if err != nil {
+			log.Println("Failed to read deleted_at:", err)
+			continue
+		}
+		t, err := time.Parse(time.RFC3339, string(data))
+		if err != nil {
+			log.Println("Failed to parse deleted_at:", err)
+			continue
+		}
+		if time.Since(t).Hours() > float64(DELETE_TIME) {
+			log.Println("Removing recycle topic", name)
+			if err := os.RemoveAll(tar); err != nil {
+				log.Println("Failed to remove recycle topic:", err)
+			}
+		}
+	}
+}
+
 func (s *Server) topicDel() func(c *gin.Context) {
 	return func(c *gin.Context) {
 		id, err := strconv.Atoi(c.Param("id"))
@@ -384,7 +421,8 @@ func (s *Server) topicDel() func(c *gin.Context) {
 		cache.lock.Lock()
 		defer cache.lock.Unlock()
 
-		if _, exists := cache.topics[id]; !exists {
+		topic, exists := cache.topics[id]
+		if !exists {
 			c.JSON(http.StatusNotFound, gin.H{"error": "Topic not found"})
 			return
 		}
@@ -392,9 +430,10 @@ func (s *Server) topicDel() func(c *gin.Context) {
 		delete(cache.topics, id)
 
 		go func() {
-			dir := nga.FindFolderNameByTid(id, AUTHOR_ID)
+			log.Println("Removing topic", id)
+			dir := topic.root
 			if dir != "" {
-				recycles := filepath.Join(DIR_TOPIC_ROOT, DIR_RECYCLE_BIN)
+				recycles := filepath.Join(s.topicRoot, DIR_RECYCLE_BIN)
 				if err := os.MkdirAll(recycles, 0755); err != nil {
 					log.Println("Failed to create recycle bin:", recycles, err)
 
@@ -404,12 +443,16 @@ func (s *Server) topicDel() func(c *gin.Context) {
 					}
 				} else {
 					log.Println("Moving topic dir to recycle bin:", dir)
-					tar := filepath.Join(recycles, dir)
+					tar := filepath.Join(recycles, strconv.Itoa(id))
 					os.RemoveAll(tar)
 					if err := os.Rename(dir, tar); err != nil {
 						log.Println("Failed to move topic dir to recycle bin:", dir, err)
+					} else {
+						os.WriteFile(filepath.Join(tar, DELETE_FLAG), []byte(time.Now().Format(time.RFC3339)), 0644)
 					}
 				}
+			} else {
+				log.Println("No topic dir to remove")
 			}
 		}()
 
@@ -545,6 +588,9 @@ func (s *Server) viewTopicRes() func(c *gin.Context) {
 	}
 }
 
+//go:embed assets/*
+var efs embed.FS
+
 func (s *Server) viewTopic() func(c *gin.Context) {
 	return func(c *gin.Context) {
 		title, markdown := "", ""
@@ -565,44 +611,50 @@ func (s *Server) viewTopic() func(c *gin.Context) {
 				markdown, err = topic.Read()
 				if err != nil {
 					title = "Failed to read topic"
+				} else {
+					markdown += "----\n"
 				}
 			}
 		}
 
-		html := `<!DOCTYPE html>
-<html lang="zh">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>{title}</title>
-	<style>
-        body {
-            background-color: #f5e8cb;
-        }
-    </style>
-</head>
-<body>
-    <div id="content">{markdown}
+		tmpl, err := template.ParseFS(efs, "assets/view.html")
+		if err != nil {
+			c.String(http.StatusInternalServerError, "Failed to load view page")
+			return
+		}
 
-----
-	</div>
-	<div>由 <a href="https://github.com/i2534/ngamm" target="_blank">NGAMM</a> 提供支持</div>
-    <script src="https://cdn.jsdelivr.net/npm/marked"></script>
-	<script src="https://cdn.jsdelivr.net/npm/marked-base-url"></script>
-    <script>
-		marked.use(markedBaseUrl.baseUrl(window.location.href + "/"));
-        const id = '{id}';
-        const content = document.querySelector('#content');
-        content.innerHTML = marked.parse(content.innerHTML);
-    </script>
-</body>
-</html>
-`
-		html = strings.ReplaceAll(html, "{id}", strconv.Itoa(id))
-		html = strings.ReplaceAll(html, "{title}", title)
-		html = strings.ReplaceAll(html, "{markdown}", markdown)
+		data := struct {
+			ID       int
+			Title    string
+			Markdown string
+		}{
+			ID:       id,
+			Title:    title,
+			Markdown: markdown,
+		}
 
-		c.Data(http.StatusOK, "text/html; charset=utf-8", []byte(html))
+		c.Header("Content-Type", "text/html; charset=utf-8")
+		if err := tmpl.Execute(c.Writer, data); err != nil {
+			c.String(http.StatusInternalServerError, "Failed to render view page")
+		}
+	}
+}
+
+func (s *Server) homePage() func(c *gin.Context) {
+	return func(c *gin.Context) {
+		es, err := efs.ReadDir(".")
+		if err == nil {
+			for _, e := range es {
+				println(e.Name())
+			}
+		}
+
+		html, err := efs.ReadFile("assets/home.html")
+		if err != nil {
+			c.String(http.StatusInternalServerError, "Failed to load home page")
+			return
+		}
+		c.Data(http.StatusOK, "text/html; charset=utf-8", html)
 	}
 }
 
@@ -615,7 +667,9 @@ func (s *Server) Run() {
 	}()
 	log.Println("Server started, listening on", s.Cfg.Addr)
 
+	s.cron.AddFunc("@every 12h", s.checkRecycleBin)
 	s.cron.Start()
+
 	go s.process()
 
 	// 等待中断信号以关闭服务器
