@@ -27,16 +27,17 @@ jobs:
 
     - name: Get version
       id: get_version
-      run: |
-        echo "VERSION=$(git describe --tags --always)" >> $GITHUB_ENV
+      run: echo "VERSION=$(git describe --tags --always)" >> $GITHUB_ENV
 
-    - name: Build
+    - name: Build for amd64
+      if: matrix.arch == 'amd64'
       run: |
-        if [ "${{ matrix.arch }}" == "arm64" ]; then
-          GOARCH=arm64 go build -v -o ./build/ngamm-${{ matrix.os }}-arm64-${{ env.VERSION }}${{ matrix.os == 'windows-latest' && '.exe' || '' }}
-        else
-          GOARCH=amd64 go build -v -o ./build/ngamm-${{ matrix.os }}-amd64-${{ env.VERSION }}${{ matrix.os == 'windows-latest' && '.exe' || '' }}
-        fi
+        GOARCH=amd64 go build -v -o ./build/ngamm-${{ matrix.os }}-amd64-${{ env.VERSION }}${{ matrix.os == 'windows-latest' && '.exe' || '' }}
+
+    - name: Build for arm64
+      if: matrix.arch == 'arm64'
+      run: |
+        GOARCH=arm64 go build -v -o ./build/ngamm-${{ matrix.os }}-arm64-${{ env.VERSION }}${{ matrix.os == 'windows-latest' && '.exe' || '' }}
 
     - name: Upload Build Artifacts
       uses: actions/upload-artifact@v4
