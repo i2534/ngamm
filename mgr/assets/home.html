@@ -195,7 +195,7 @@
 
         async function updateTopic(id) {
             const cron = prompt("输入任务定时公式:", "@every 1h");
-            if (cron && cron.trim() !== '') {
+            if (cron != null) {
                 try {
                     const response = await fetch(`${baseUrl}/topic/${id}`, {
                         method: 'POST',

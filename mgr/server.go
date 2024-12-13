@@ -496,6 +496,9 @@ func (s *Server) addCron(topic *Topic) {
 			meta.updateCronId = id
 			// fmt.Println("Cron job id:", id, topic.Metadata.updateCronId)
 		}
+	} else {
+		s.cron.Remove(meta.updateCronId)
+		meta.updateCronId = 0
 	}
 }
 
@@ -662,13 +665,6 @@ func (s *Server) viewTopic() func(c *gin.Context) {
 
 func (s *Server) homePage() func(c *gin.Context) {
 	return func(c *gin.Context) {
-		es, err := efs.ReadDir(".")
-		if err == nil {
-			for _, e := range es {
-				println(e.Name())
-			}
-		}
-
 		html, err := efs.ReadFile("assets/home.html")
 		if err != nil {
 			c.String(http.StatusInternalServerError, "Failed to load home page")
