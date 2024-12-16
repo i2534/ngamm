@@ -45,10 +45,27 @@ type Metadata struct {
 	updateCronId cron.EntryID
 }
 
+type CustomTime struct {
+	time.Time
+}
+
+func (t CustomTime) MarshalJSON() ([]byte, error) {
+	if t.IsZero() {
+		return []byte(`""`), nil
+	}
+	return json.Marshal(t.Format("2006-01-02 15:04:05"))
+}
+func fromTime(t time.Time) CustomTime {
+	return CustomTime{Time: t}
+}
+func now() CustomTime {
+	return fromTime(time.Now())
+}
+
 type Result struct {
 	Success bool
 	Message string
-	Time    time.Time
+	Time    CustomTime
 }
 
 func (m *Metadata) Merge(n *Metadata) {
@@ -60,7 +77,7 @@ type Topic struct {
 	Id       int
 	Title    string
 	Author   string
-	Create   time.Time
+	Create   CustomTime
 	MaxPage  int
 	MaxFloor int
 	Metadata *Metadata
@@ -95,7 +112,7 @@ func LoadTopic(root string, id int) (*Topic, error) {
 				}
 				author := m[2]
 
-				topic.Create = t
+				topic.Create = fromTime(t)
 				topic.Author = author
 				return false
 			}
@@ -383,7 +400,7 @@ func (s *Server) topicAdd() func(c *gin.Context) {
 			cache.topics[id] = &Topic{
 				root:     filepath.Join(s.topicRoot, strconv.Itoa(id)),
 				Id:       id,
-				Create:   time.Now(),
+				Create:   now(),
 				Metadata: new(Metadata),
 			}
 
@@ -551,7 +568,7 @@ func (s *Server) process() {
 			} else {
 				topic.Result = Result{
 					Success: true,
-					Time:    time.Now(),
+					Time:    now(),
 				}
 
 				cache.lock.Lock()
@@ -565,7 +582,7 @@ func (s *Server) process() {
 				topic.Result = Result{
 					Success: false,
 					Message: msg,
-					Time:    time.Now(),
+					Time:    now(),
 				}
 			}
 			cache.lock.Unlock()

@@ -18,8 +18,11 @@
     <script src="https://cdn.jsdelivr.net/npm/marked"></script>
     <script src="https://cdn.jsdelivr.net/npm/marked-base-url"></script>
     <script>
-        marked.use(markedBaseUrl.baseUrl(window.location.href + "/"));
         const id = '{{.ID}}';
+        const token = '{{.Token}}';
+        const baseUrl = window.location.origin;
+        const mbu = `${baseUrl}/view/${id}/${(token && token.length) ? token : '-'}/`;
+        marked.use(markedBaseUrl.baseUrl(mbu));
         const content = document.querySelector('#content');
         content.innerHTML = marked.parse(content.innerHTML);
     </script>

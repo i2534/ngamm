@@ -14,6 +14,11 @@
 
 将配置好的 `ngapost2md` 程序 和 其同目录下的所有内容都放置到 `ngap2m` 文件夹里
 
+### 下载 ngamm
+
+进入 [Actions](https://github.com/i2534/ngamm/actions/workflows/build.yml)
+进入最后已成成功构建的 workflow , 在 `Artifacts` 中找到需要的程序下载解压
+
 ### 配置 ngamm
 
 去到 https://github.com/i2534/ngamm/actions/runs/12195299390 , 找到 `Artifacts` 里下载 ngamm 程序(目前只有 linux 版本)

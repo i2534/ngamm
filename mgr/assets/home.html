@@ -29,6 +29,7 @@
         th {
             background-color: #f2f2f2;
             text-align: left;
+            cursor: pointer;
         }
 
         tr:nth-child(even) {
@@ -76,6 +77,14 @@
             display: inline-block;
             margin-right: 10px;
         }
+
+        .update-success {
+            color: #45a049;
+        }
+
+        .update-failed {
+            color: #ff9800;
+        }
     </style>
 </head>
 
@@ -94,6 +103,8 @@
         const baseUrl = window.location.origin;
         const headers = {};
         const inputToken = document.getElementById('authToken');
+        let topics = [];
+        let sorts = { key: '', order: 'asc' };
 
         function setAuthToken() {
             const token = inputToken.value;
@@ -129,14 +140,15 @@
             return response.json();
         }
 
-        function renderTopics(topics) {
+        function renderTopics() {
             const topicsDiv = document.getElementById('topics');
-            let table = '<table><tr><th>ID</th><th>标题</th><th>楼主</th><th>定时任务</th><th>操作</th></tr>';
+            let table = '<table><tr><th onclick="sortTopics(\'Id\')">ID</th><th onclick="sortTopics(\'Title\')">标题</th><th onclick="sortTopics(\'Author\')">楼主</th><th onclick="sortTopics(\'Result.Time\')">最后更新于</th><th>更新任务</th><th>操作</th></tr>';
             topics.forEach(topic => {
                 table += `<tr>
                     <td>${topic.Id}</td>
                     <td>${topic.Title}</td>
                     <td>${topic.Author}</td>
+                    <td><span class="update-${topic.Result.Success ? 'success' : 'failed'}">${topic.Result.Time}<span></td>
                     <td>${topic.Metadata.UpdateCron}</td>
                     <td>
                         <button onclick="viewTopic(${topic.Id})">查看</button>
@@ -149,10 +161,27 @@
             topicsDiv.innerHTML = table;
         }
 
+        function sortTopics(key) {
+            if (sorts.key === key) {
+                sorts.order = sorts.order === 'asc' ? 'desc' : 'asc';
+            } else {
+                sorts.key = key;
+                sorts.order = 'asc';
+            }
+
+            topics.sort((a, b) => {
+                let aValue = a[key], bValue = b[key];
+                if (aValue < bValue) return sorts.order === 'asc' ? -1 : 1;
+                if (aValue > bValue) return sorts.order === 'asc' ? 1 : -1;
+                return 0;
+            });
+            renderTopics();
+        }
+
         async function listTopics() {
             try {
-                const topics = await fetchTopics();
-                renderTopics(topics);
+                topics = await fetchTopics();
+                renderTopics();
             } catch (error) {
                 alert(error.message);
             }
@@ -194,13 +223,14 @@
         }
 
         async function updateTopic(id) {
-            const cron = prompt("输入任务定时公式:", "@every 1h");
-            if (cron != null) {
+            const input = prompt("输入自动更新任务定时公式和更新失败后最大重试次数\n(格式: cron, count)\ncron 为空则代表不自动更新\ncount 小于等于 0 则代表一直重试", "@every 1h, 0");
+            if (input != null) {
+                const [cron, maxRetryCount] = input.split(',').map(s => s.trim());
                 try {
                     const response = await fetch(`${baseUrl}/topic/${id}`, {
                         method: 'POST',
                         headers: { ...headers, 'Content-Type': 'application/json' },
-                        body: JSON.stringify({ UpdateCron: cron })
+                        body: JSON.stringify({ UpdateCron: cron, MaxRetryCount: parseInt(maxRetryCount) })
                     });
                     const data = await response.json();
                     if (!response.ok) {
@@ -214,8 +244,18 @@
             }
         }
 
-        function viewTopic(id) {
-            window.open(`${baseUrl}/view/${id}`, '_blank');
+        function hashToken(token) {
+            return crypto.subtle.digest('SHA-1', new TextEncoder().encode(token)).then(hashBuffer => {
+                return Array.from(new Uint8Array(hashBuffer))
+                    .map(b => b.toString(16).padStart(2, '0'))
+                    .filter((_, i) => i % 5 == 0)
+                    .join('');
+            });
+        }
+
+        async function viewTopic(id) {
+            const token = headers.Authorization ? await hashToken(headers.Authorization) : '';
+            window.open(`${baseUrl}/view/${id}?token=${token}`, '_blank');
         }
 
         window.addEventListener('load', () => {
