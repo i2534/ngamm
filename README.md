@@ -33,13 +33,17 @@ chmod +x ngamm
 ```
 启动 `ngamm`, 看到 `Server started, listening on :5842` 表示启动成功
 
-### 使用
+### 正式使用
 
 #### 使用页面管理
 
 浏览器访问 `url:port`
 
-#### 获取已保存的帖子列表
+`port` 默认为 `5842`
+
+#### 使用 API 管理
+
+##### 获取已保存的帖子列表
 使用 Postman, ApiPost 等 Rest API 测试工具访问
 ```
 GET http://[ip]:5842/topic
@@ -49,7 +53,7 @@ GET http://[ip]:5842/topic
 curl -X GET http://[ip]:5842/topic
 ```
 
-#### 添加一个保存帖子的任务
+##### 添加一个保存帖子的任务
 使用 Postman, ApiPost 等 Rest API 测试工具访问
 ```
 PUT http://[ip]:5842/topic/{id}
@@ -60,7 +64,7 @@ curl -X PUT http://[ip]:5842/topic/{id}
 ```
 将 `{id}` 替换成实际的帖子ID
 
-#### 设置帖子定时更新
+##### 设置帖子定时更新
 使用 Postman, ApiPost 等 Rest API 测试工具访问
 ```
 POST http://[ip]:5842/topic/{id}
@@ -80,7 +84,7 @@ curl -X POST "http://[ip]:5842/topic/{id}" \
 ```
 将 `{id}` 替换成实际的帖子ID, UpdateCron 的取值可以参考 [Cron](https://godoc.org/github.com/robfig/cron) 的说明, `@every 1h` 表示每一个小时执行一次更新
 
-#### 查看帖子内容
+##### 查看帖子内容
 浏览器访问
 ```
 http://[ip]:5842/view/{id}

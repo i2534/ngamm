@@ -2,6 +2,7 @@ package mgr
 
 import (
 	"context"
+	"crypto/sha1"
 	"embed"
 	"encoding/json"
 	"fmt"
@@ -30,19 +31,28 @@ var (
 	METADATA_JSON   = "metadata.json"
 	ASSETSA_JSON    = "assets.json"
 	DELETE_FLAG     = "deleted_at"
+	DEFAULT_CRON    = "@every 1h"
 	QUEUE_SIZE      = 999
 	AUTHOR_ID       = 0
 	DELETE_TIME     = 7 * 24
 )
 
 type Config struct {
-	Addr  string
-	Token string
+	Addr      string
+	Token     string
+	tokenHash string
 }
 
 type Metadata struct {
-	UpdateCron   string
-	updateCronId cron.EntryID
+	UpdateCron    string
+	updateCronId  cron.EntryID
+	MaxRetryCount int
+	retryCount    int
+}
+
+func (m *Metadata) Merge(n *Metadata) {
+	m.UpdateCron = n.UpdateCron
+	m.MaxRetryCount = n.MaxRetryCount
 }
 
 type CustomTime struct {
@@ -68,10 +78,6 @@ type Result struct {
 	Time    CustomTime
 }
 
-func (m *Metadata) Merge(n *Metadata) {
-	m.UpdateCron = n.UpdateCron
-}
-
 type Topic struct {
 	root     string
 	Id       int
@@ -85,12 +91,19 @@ type Topic struct {
 	assets   map[string]string
 }
 
+func isExist(path string) bool {
+	if _, err := os.Stat(path); os.IsNotExist(err) {
+		return false
+	}
+	return true
+}
+
 func LoadTopic(root string, id int) (*Topic, error) {
 	dir := filepath.Join(root, strconv.Itoa(id))
 	log.Printf("Loading topic %d from %s\n", id, dir)
 
 	md := filepath.Join(dir, POST_MARKDOWN)
-	if _, err := os.Stat(md); os.IsNotExist(err) {
+	if !isExist(md) {
 		return nil, fmt.Errorf("no %s at dir: %s", POST_MARKDOWN, dir)
 	}
 
@@ -240,6 +253,14 @@ func NewServer(cfg *Config, nga *Client) (*Server, error) {
 	if e != nil {
 		return nil, e
 	}
+	if cfg.Token != "" {
+		hash := sha1.Sum([]byte(cfg.Token))
+		for i := 0; i < len(hash); i++ {
+			if i%5 == 0 {
+				cfg.tokenHash += fmt.Sprintf("%02x", hash[i])
+			}
+		}
+	}
 	return srv, nil
 }
 
@@ -248,12 +269,11 @@ func (s *Server) init() error {
 
 	r := s.Raw.Handler.(*gin.Engine)
 
-	if s.Cfg.Token != "" {
-		r.Use(s.authMiddleware()) // 添加权限校验中间件
-	}
-
 	tg := r.Group("/topic")
 	{
+		if s.Cfg.Token != "" {
+			tg.Use(s.topicMiddleware())
+		}
 		tg.GET("", s.topicList())
 		tg.GET("/", s.topicList())
 		tg.GET("/:id", s.topicInfo())
@@ -263,8 +283,11 @@ func (s *Server) init() error {
 	}
 	vg := r.Group("/view")
 	{
-		vg.GET("/:id", s.viewTopic())
-		vg.GET("/:id/:name", s.viewTopicRes())
+		if s.Cfg.Token != "" {
+			vg.Use(s.viewMiddleware())
+		}
+		vg.GET("/:token/:id", s.viewTopic())
+		vg.GET("/:token/:id/:name", s.viewTopicRes())
 	}
 
 	r.GET("/", s.homePage())
@@ -272,14 +295,22 @@ func (s *Server) init() error {
 	return nil
 }
 
-func (s *Server) authMiddleware() gin.HandlerFunc {
+func (s *Server) topicMiddleware() gin.HandlerFunc {
 	return func(c *gin.Context) {
-		if c.Request.URL.Path == "/" {
-			c.Next()
-			return
-		}
 		token := c.GetHeader("Authorization")
 		if token != s.Cfg.Token { // 简单的权限校验
+			c.JSON(http.StatusUnauthorized, gin.H{"error": "Unauthorized"})
+			c.Abort()
+			return
+		}
+		c.Next()
+	}
+}
+
+func (s *Server) viewMiddleware() gin.HandlerFunc {
+	return func(c *gin.Context) {
+		token := c.Param("token")
+		if token != s.Cfg.tokenHash { // 简单的权限校验
 			c.JSON(http.StatusUnauthorized, gin.H{"error": "Unauthorized"})
 			c.Abort()
 			return
@@ -398,10 +429,12 @@ func (s *Server) topicAdd() func(c *gin.Context) {
 			defer lock.Unlock()
 
 			cache.topics[id] = &Topic{
-				root:     filepath.Join(s.topicRoot, strconv.Itoa(id)),
-				Id:       id,
-				Create:   now(),
-				Metadata: new(Metadata),
+				root:   filepath.Join(s.topicRoot, strconv.Itoa(id)),
+				Id:     id,
+				Create: now(),
+				Metadata: &Metadata{
+					UpdateCron: DEFAULT_CRON,
+				},
 			}
 
 			c.JSON(http.StatusCreated, id)
@@ -560,6 +593,31 @@ func (s *Server) process() {
 	for id := range cache.queue {
 		log.Println("Processing topic", id)
 
+		// 先检查 process.ini, assets.json 存在与否, 如果文件夹存在但文件不存在, ngapost2md 会认为其是无效的帖子, 不予更新
+		dir := filepath.Join(s.topicRoot, strconv.Itoa(id))
+		if isExist(dir) {
+			ini := filepath.Join(dir, PROCESS_INI)
+			if !isExist(ini) {
+				log.Println("No process.ini found for topic, create it...")
+
+				data := `[local]
+max_page = 0
+max_floor = 0`
+				if err := os.WriteFile(ini, []byte(data), 0644); err != nil {
+					log.Println("Failed to create process.ini:", err)
+				}
+			}
+			aj := filepath.Join(dir, ASSETSA_JSON)
+			if !isExist(aj) {
+				log.Println("No assets.json found for topic, create it...")
+
+				data := "{}"
+				if err := os.WriteFile(aj, []byte(data), 0644); err != nil {
+					log.Println("Failed to create assets.json:", err)
+				}
+			}
+		}
+
 		ok, msg := s.nga.Download(id)
 		if ok {
 			topic, err := LoadTopic(s.topicRoot, id)
@@ -570,6 +628,7 @@ func (s *Server) process() {
 					Success: true,
 					Time:    now(),
 				}
+				topic.Metadata.retryCount = 0
 
 				cache.lock.Lock()
 				cache.topics[id] = topic
@@ -583,6 +642,17 @@ func (s *Server) process() {
 					Success: false,
 					Message: msg,
 					Time:    now(),
+				}
+
+				md := topic.Metadata
+				if md.MaxRetryCount > 0 {
+					md.retryCount += 1
+					log.Println("Failed count:", md.retryCount)
+					if md.retryCount >= md.MaxRetryCount {
+						log.Printf("Max retry count reached (%d) for topic %d\n", md.retryCount, id)
+						s.cron.Remove(md.updateCronId)
+						md.updateCronId = 0
+					}
 				}
 			}
 			cache.lock.Unlock()
@@ -664,12 +734,14 @@ func (s *Server) viewTopic() func(c *gin.Context) {
 		}
 
 		data := struct {
-			ID       int
 			Title    string
+			ID       int
+			Token    string
 			Markdown string
 		}{
-			ID:       id,
 			Title:    title,
+			ID:       id,
+			Token:    s.Cfg.tokenHash,
 			Markdown: markdown,
 		}
 

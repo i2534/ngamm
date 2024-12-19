@@ -103,8 +103,8 @@
         const baseUrl = window.location.origin;
         const headers = {};
         const inputToken = document.getElementById('authToken');
+        const sorts = { key: '', order: 'asc' };
         let topics = [];
-        let sorts = { key: '', order: 'asc' };
 
         function setAuthToken() {
             const token = inputToken.value;
@@ -162,11 +162,15 @@
         }
 
         function sortTopics(key) {
-            if (sorts.key === key) {
-                sorts.order = sorts.order === 'asc' ? 'desc' : 'asc';
+            if (key && key.length) {
+                if (sorts.key === key) {
+                    sorts.order = sorts.order === 'asc' ? 'desc' : 'asc';
+                } else {
+                    sorts.key = key;
+                    sorts.order = 'asc';
+                }
             } else {
-                sorts.key = key;
-                sorts.order = 'asc';
+                key = sorts.key;
             }
 
             topics.sort((a, b) => {
@@ -181,7 +185,7 @@
         async function listTopics() {
             try {
                 topics = await fetchTopics();
-                renderTopics();
+                sortTopics();
             } catch (error) {
                 alert(error.message);
             }
@@ -223,7 +227,8 @@
         }
 
         async function updateTopic(id) {
-            const input = prompt("输入自动更新任务定时公式和更新失败后最大重试次数\n(格式: cron, count)\ncron 为空则代表不自动更新\ncount 小于等于 0 则代表一直重试", "@every 1h, 0");
+            const md = topics.find(t => t.Id === id).Metadata;
+            const input = prompt("输入自动更新任务定时公式和更新失败后最大重试次数\n(格式: cron, count)\ncron 为空则代表不自动更新\ncount 小于等于 0 则代表一直重试", `${md.UpdateCron}, ${md.MaxRetryCount}`);
             if (input != null) {
                 const [cron, maxRetryCount] = input.split(',').map(s => s.trim());
                 try {
@@ -254,8 +259,8 @@
         }
 
         async function viewTopic(id) {
-            const token = headers.Authorization ? await hashToken(headers.Authorization) : '';
-            window.open(`${baseUrl}/view/${id}?token=${token}`, '_blank');
+            const token = headers.Authorization ? await hashToken(headers.Authorization) : '-';
+            window.open(`${baseUrl}/view/${token}/${id}`, '_blank');
         }
 
         window.addEventListener('load', () => {

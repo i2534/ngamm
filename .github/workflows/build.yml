@@ -32,22 +32,22 @@ jobs:
     - name: Build for amd64 on Linux
       if: matrix.arch == 'amd64' && matrix.os != 'windows-latest'
       run: |
-        GOARCH=amd64 go build -v -o ./build/ngamm-${{ matrix.os }}-amd64-${{ env.VERSION }}
+        GOARCH=amd64 go build -ldflags "-X main.buildTime=$(date +%Y-%m-%dT%H:%M:%S) -X main.gitHash=${{ env.VERSION }}" -v -o ./build/ngamm-${{ matrix.os }}-amd64-${{ env.VERSION }}
 
     - name: Build for amd64 on Windows
       if: matrix.arch == 'amd64' && matrix.os == 'windows-latest'
       run: |
-        $env:GOARCH="amd64"; go build -v -o ./build/ngamm-${{ matrix.os }}-amd64-${{ env.VERSION }}.exe
+        $env:GOARCH="amd64"; $buildTime=(Get-Date -Format "yyyy-MM-ddTHH:mm:ss"); go build -ldflags "-X main.buildTime=$buildTime -X main.gitHash=${{ env.VERSION }}" -v -o ./build/ngamm-${{ matrix.os }}-amd64-${{ env.VERSION }}.exe
 
     - name: Build for arm64 on Linux
       if: matrix.arch == 'arm64' && matrix.os != 'windows-latest'
       run: |
-        GOARCH=arm64 go build -v -o ./build/ngamm-${{ matrix.os }}-arm64-${{ env.VERSION }}
+        GOARCH=arm64 go build -ldflags "-X main.buildTime=$(date +%Y-%m-%dT%H:%M:%S) -X main.gitHash=${{ env.VERSION }}" -v -o ./build/ngamm-${{ matrix.os }}-arm64-${{ env.VERSION }}
 
     - name: Build for arm64 on Windows
       if: matrix.arch == 'arm64' && matrix.os == 'windows-latest'
       run: |
-        $env:GOARCH="arm64"; go build -v -o ./build/ngamm-${{ matrix.os }}-arm64-${{ env.VERSION }}.exe
+        $env:GOARCH="arm64"; $buildTime=(Get-Date -Format "yyyy-MM-ddTHH:mm:ss"); go build -ldflags "-X main.buildTime=$buildTime -X main.gitHash=${{ env.VERSION }}" -v -o ./build/ngamm-${{ matrix.os }}-arm64-${{ env.VERSION }}.exe
 
     - name: Upload Build Artifacts
       uses: actions/upload-artifact@v4

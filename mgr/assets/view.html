@@ -21,7 +21,7 @@
         const id = '{{.ID}}';
         const token = '{{.Token}}';
         const baseUrl = window.location.origin;
-        const mbu = `${baseUrl}/view/${id}/${(token && token.length) ? token : '-'}/`;
+        const mbu = `${baseUrl}/view/${(token && token.length) ? token : '-'}/${id}/`;
         marked.use(markedBaseUrl.baseUrl(mbu));
         const content = document.querySelector('#content');
         content.innerHTML = marked.parse(content.innerHTML);
