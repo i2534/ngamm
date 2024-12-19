@@ -23,6 +23,14 @@ import (
 	"gopkg.in/ini.v1"
 )
 
+func local() *time.Location {
+	as, err := time.LoadLocation("Asia/Shanghai")
+	if err != nil {
+		as = time.Local
+	}
+	return as
+}
+
 var (
 	DIR_TOPIC_ROOT  = "."        // 帖子存储根目录, 目前只在工作目录
 	DIR_RECYCLE_BIN = "recycles" // 回收站目录
@@ -35,6 +43,7 @@ var (
 	QUEUE_SIZE      = 999
 	AUTHOR_ID       = 0
 	DELETE_TIME     = 7 * 24
+	TIME_LOC        = local()
 )
 
 type Config struct {
@@ -63,7 +72,8 @@ func (t CustomTime) MarshalJSON() ([]byte, error) {
 	if t.IsZero() {
 		return []byte(`""`), nil
 	}
-	return json.Marshal(t.Format("2006-01-02 15:04:05"))
+	lt := t.In(TIME_LOC)
+	return json.Marshal(lt.Format("2006-01-02 15:04:05"))
 }
 func fromTime(t time.Time) CustomTime {
 	return CustomTime{Time: t}
@@ -88,7 +98,7 @@ type Topic struct {
 	MaxFloor int
 	Metadata *Metadata
 	Result   Result
-	assets   map[string]string
+	// assets   map[string]string
 }
 
 func isExist(path string) bool {
@@ -159,18 +169,18 @@ func LoadTopic(root string, id int) (*Topic, error) {
 	}
 	topic.Metadata = meta
 
-	assets := make(map[string]string)
-	af, err := os.ReadFile(filepath.Join(dir, ASSETSA_JSON))
-	if err != nil {
-		if os.IsNotExist(err) {
-			log.Println("No assets found for topic", id)
-		} else {
-			log.Println("Failed to read assets:", err)
-		}
-	} else if err := json.Unmarshal(af, &assets); err != nil {
-		log.Println("Failed to parse assets:", err)
-	}
-	topic.assets = assets
+	// assets := make(map[string]string)
+	// af, err := os.ReadFile(filepath.Join(dir, ASSETSA_JSON))
+	// if err != nil {
+	// 	if os.IsNotExist(err) {
+	// 		log.Println("No assets found for topic", id)
+	// 	} else {
+	// 		log.Println("Failed to read assets:", err)
+	// 	}
+	// } else if err := json.Unmarshal(af, &assets); err != nil {
+	// 	log.Println("Failed to parse assets:", err)
+	// }
+	// topic.assets = assets
 
 	return topic, nil
 }
@@ -201,6 +211,24 @@ func (t *Topic) Read() (string, error) {
 	return string(data), nil
 }
 
+type Smile struct {
+	Base string `json:"base"`
+	List []struct {
+		Name string `json:"name"`
+		Path string `json:"path"`
+	} `json:"list"`
+}
+
+func (s *Smile) Origin(name string) string {
+	t, n := name[:2], name[2:strings.LastIndex(name, ".")]
+	for _, v := range s.List {
+		if v.Name == n && strings.HasPrefix(v.Path, t) {
+			return s.Base + v.Path
+		}
+	}
+	return ""
+}
+
 type cache struct {
 	lock *sync.RWMutex
 	// topics already loaded
@@ -208,6 +236,7 @@ type cache struct {
 	topics map[int]*Topic
 	// adding
 	queue chan int
+	smile *Smile
 }
 
 func (c *cache) close() {
@@ -229,10 +258,6 @@ type Server struct {
 func NewServer(cfg *Config, nga *Client) (*Server, error) {
 	// 创建 Gin 路由器
 	r := gin.Default()
-	as, err := time.LoadLocation("Asia/Shanghai")
-	if err != nil {
-		as = time.Local
-	}
 	srv := &Server{
 		Raw: &http.Server{
 			Addr:    cfg.Addr,
@@ -242,7 +267,7 @@ func NewServer(cfg *Config, nga *Client) (*Server, error) {
 		nga:  nga,
 		stop: make(chan struct{}),
 		lock: &sync.Mutex{},
-		cron: cron.New(cron.WithLocation(as)),
+		cron: cron.New(cron.WithLocation(TIME_LOC)),
 		cache: &cache{
 			lock:  &sync.RWMutex{},
 			queue: make(chan int, QUEUE_SIZE),
@@ -660,13 +685,13 @@ max_floor = 0`
 	}
 }
 
+//go:embed assets/*
+var efs embed.FS
+
 func (s *Server) viewTopicRes() func(c *gin.Context) {
 	return func(c *gin.Context) {
-		id, err := strconv.Atoi(c.Param("id"))
-		if err != nil {
-			c.String(http.StatusBadRequest, "Invalid topic ID")
-			return
-		}
+		tid := c.Param("id")
+
 		name := c.Param("name")
 		if name == "" {
 			c.String(http.StatusBadRequest, "Invalid file name")
@@ -674,32 +699,66 @@ func (s *Server) viewTopicRes() func(c *gin.Context) {
 		}
 
 		cache := s.cache
-		cache.lock.RLock()
-		defer cache.lock.RUnlock()
+		// 处理使用默认表情设置的情况
+		if tid == "smile" {
+			if cache.smile == nil {
+				cache.lock.Lock()
+				defer cache.lock.Unlock()
 
-		topic, exists := cache.topics[id]
-		if !exists {
-			c.String(http.StatusNotFound, "Topic not found")
-			return
+				data, err := efs.ReadFile("assets/smiles.json")
+				if err != nil {
+					c.String(http.StatusInternalServerError, "Failed to load embed smiles.json")
+					return
+				}
+
+				smile := new(Smile)
+				if err := json.Unmarshal(data, smile); err != nil {
+					c.String(http.StatusInternalServerError, "Failed to parse embed smiles.json")
+					return
+				}
+				cache.smile = smile
+			}
+
+			url := cache.smile.Origin(name)
+			if url == "" {
+				c.String(http.StatusNotFound, "Smile "+name+" not found")
+			} else {
+				c.Redirect(http.StatusFound, url)
+			}
+		} else {
+			id, err := strconv.Atoi(tid)
+			if err != nil {
+				c.String(http.StatusBadRequest, "Invalid topic ID")
+				return
+			}
+
+			cache.lock.RLock()
+			defer cache.lock.RUnlock()
+
+			topic, exists := cache.topics[id]
+			if !exists {
+				c.String(http.StatusNotFound, "Topic not found")
+				return
+			}
+			path := name
+
+			// assets := topic.assets
+			// path, exists := assets[name]
+			// if !exists {
+			// 	path = name
+			// }
+
+			dir := topic.root
+			file := filepath.Join(dir, path)
+			data, err := os.ReadFile(file)
+			if err != nil {
+				c.String(http.StatusInternalServerError, "Failed to read asset")
+				return
+			}
+			c.Data(http.StatusOK, "application/octet-stream", data)
 		}
-		assets := topic.assets
-		path, exists := assets[name]
-		if !exists {
-			path = name
-		}
-		dir := topic.root
-		file := filepath.Join(dir, path)
-		data, err := os.ReadFile(file)
-		if err != nil {
-			c.String(http.StatusInternalServerError, "Failed to read asset")
-			return
-		}
-		c.Data(http.StatusOK, "application/octet-stream", data)
 	}
 }
-
-//go:embed assets/*
-var efs embed.FS
 
 func (s *Server) viewTopic() func(c *gin.Context) {
 	return func(c *gin.Context) {
