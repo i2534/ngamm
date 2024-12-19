@@ -214,16 +214,24 @@ func (t *Topic) Read() (string, error) {
 type Smile struct {
 	Base string `json:"base"`
 	List []struct {
-		Name string `json:"name"`
-		Path string `json:"path"`
+		Name   string `json:"name"`
+		Path   string `json:"path"`
+		Prefix string `json:"prefix"`
 	} `json:"list"`
+
+	cache map[string]string
 }
 
 func (s *Smile) Origin(name string) string {
-	t, n := name[:2], name[2:strings.LastIndex(name, ".")]
+	n := name[:strings.LastIndex(name, ".")]
+	if v, ok := s.cache[n]; ok {
+		return v
+	}
 	for _, v := range s.List {
-		if v.Name == n && strings.HasPrefix(v.Path, t) {
-			return s.Base + v.Path
+		if strings.HasPrefix(n, v.Prefix) && strings.HasSuffix(n, v.Name) {
+			r := s.Base + v.Path
+			s.cache[n] = r
+			return r
 		}
 	}
 	return ""
@@ -711,7 +719,9 @@ func (s *Server) viewTopicRes() func(c *gin.Context) {
 					return
 				}
 
-				smile := new(Smile)
+				smile := &Smile{
+					cache: make(map[string]string),
+				}
 				if err := json.Unmarshal(data, smile); err != nil {
 					c.String(http.StatusInternalServerError, "Failed to parse embed smiles.json")
 					return
@@ -721,9 +731,10 @@ func (s *Server) viewTopicRes() func(c *gin.Context) {
 
 			url := cache.smile.Origin(name)
 			if url == "" {
+				log.Printf("Smile %s not found\n", name)
 				c.String(http.StatusNotFound, "Smile "+name+" not found")
 			} else {
-				c.Redirect(http.StatusFound, url)
+				c.Redirect(http.StatusMovedPermanently, url)
 			}
 		} else {
 			id, err := strconv.Atoi(tid)
