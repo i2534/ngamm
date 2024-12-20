@@ -100,6 +100,7 @@
     <h2>帖子列表</h2>
     <div id="topics"></div>
     <script>
+        const ngaPostBase = '{{.BaseUrl}}/read.php?tid=';
         const baseUrl = window.location.origin;
         const headers = {};
         const inputToken = document.getElementById('authToken');
@@ -145,7 +146,7 @@
             let table = '<table><tr><th onclick="sortTopics(\'Id\')">ID</th><th onclick="sortTopics(\'Title\')">标题</th><th onclick="sortTopics(\'Author\')">楼主</th><th onclick="sortTopics(\'Result.Time\')">最后更新于</th><th>更新任务</th><th>操作</th></tr>';
             topics.forEach(topic => {
                 table += `<tr>
-                    <td>${topic.Id}</td>
+                    <td><a href="${ngaPostBase}${topic.Id}" target="_blank">${topic.Id}</a></td>
                     <td>${topic.Title}</td>
                     <td>${topic.Author}</td>
                     <td><span class="update-${topic.Result.Success ? 'success' : 'failed'}">${topic.Result.Time}<span></td>

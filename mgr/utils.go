@@ -4,49 +4,63 @@ import (
 	"bufio"
 	"fmt"
 	"os"
+	"time"
 )
 
+func Local() *time.Location {
+	as, e := time.LoadLocation("Asia/Shanghai")
+	if e != nil {
+		as = time.Local
+	}
+	return as
+}
+
+func IsExist(path string) bool {
+	if _, e := os.Stat(path); os.IsNotExist(e) {
+		return false
+	}
+	return true
+}
+
 func readFile(filePath string, lineHandler func(scanner *bufio.Scanner) error) error {
-	file, err := os.Open(filePath)
-	if err != nil {
-		return err
+	file, e := os.Open(filePath)
+	if e != nil {
+		return e
 	}
 	defer file.Close()
-
-	scanner := bufio.NewScanner(file)
-	return lineHandler(scanner)
+	return lineHandler(bufio.NewScanner(file))
 }
 
 func ReadFirstLine(filePath string) (string, error) {
 	var firstLine string
-	err := readFile(filePath, func(scanner *bufio.Scanner) error {
+	e := readFile(filePath, func(scanner *bufio.Scanner) error {
 		if scanner.Scan() {
 			firstLine = scanner.Text()
 			return nil
 		}
-		if err := scanner.Err(); err != nil {
-			return err
+		if e := scanner.Err(); e != nil {
+			return e
 		}
 		return fmt.Errorf("file is empty")
 	})
-	return firstLine, err
+	return firstLine, e
 }
 
 func ReadLines(filePath string, prefix int) ([]string, error) {
 	lines := make([]string, 0, prefix)
-	err := readFile(filePath, func(scanner *bufio.Scanner) error {
+	e := readFile(filePath, func(scanner *bufio.Scanner) error {
 		for scanner.Scan() {
 			lines = append(lines, scanner.Text())
 			if len(lines) >= prefix {
 				break
 			}
 		}
-		if err := scanner.Err(); err != nil {
-			return err
+		if e := scanner.Err(); e != nil {
+			return e
 		}
 		return nil
 	})
-	return lines, err
+	return lines, e
 }
 
 func ReadLine(filePath string, fx func(string, int) bool) error {
@@ -58,8 +72,8 @@ func ReadLine(filePath string, fx func(string, int) bool) error {
 			}
 			i++
 		}
-		if err := scanner.Err(); err != nil {
-			return err
+		if e := scanner.Err(); e != nil {
+			return e
 		}
 		return nil
 	})

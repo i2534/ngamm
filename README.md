@@ -14,8 +14,6 @@
 
 将配置好的 `ngapost2md` 程序 和 其同目录下的所有内容都放置到 `ngap2m` 文件夹里
 
-建议将 `use_local_smile_pic` 设置为 `False`, 不要使用本地表情(不额外处理, 本地也没有啊)
-
 ### 下载 ngamm
 
 进入 [Actions](https://github.com/i2534/ngamm/actions/workflows/build.yml)

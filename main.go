@@ -17,21 +17,22 @@ var (
 
 type Option struct {
 	Port    int    `short:"p" long:"port" description:"端口号" default:"5842"`
-	Program string `short:"m" long:"program" description:"ngapost2md 程序路径" default:"ngapost2md/main"`
+	Program string `short:"m" long:"program" description:"ngapost2md 程序路径" default:"ngapost2md/ngapost2md"`
 	Token   string `short:"t" long:"token" description:"设置一个简单的访问令牌, 如果不设置则不需要令牌"`
+	Smile   string `short:"s" long:"smile" description:"表情配置:\nlocal: 使用本地缓存(如果没有则自动下载)\nweb: 使用远程(即NGA服务器上的)\n" default:"local"`
 	Version bool   `short:"v" long:"version" description:"显示版本信息"`
 }
 
 func main() {
 	var opts Option
 	parser := flags.NewParser(&opts, flags.Default)
-	_, err := parser.Parse()
-	if err != nil {
+	_, e := parser.Parse()
+	if e != nil {
 		// 如果解析失败，打印帮助信息
-		if flagsErr, ok := err.(*flags.Error); ok && flagsErr.Type == flags.ErrHelp {
+		if fe, ok := e.(*flags.Error); ok && fe.Type == flags.ErrHelp {
 			os.Exit(0)
 		} else {
-			log.Fatalln("参数解析出现问题:", err.Error())
+			log.Fatalln("参数解析出现问题:", e.Error())
 		}
 	}
 
@@ -40,19 +41,19 @@ func main() {
 		os.Exit(0)
 	}
 
-	wd, err := os.Getwd()
-	if err != nil {
-		log.Fatalln("获取当前工作目录出现问题:", err.Error())
+	wd, e := os.Getwd()
+	if e != nil {
+		log.Fatalln("获取当前工作目录出现问题:", e.Error())
 	}
 
 	program := filepath.Join(wd, opts.Program)
-	if _, err := os.Stat(program); os.IsNotExist(err) {
+	if _, e := os.Stat(program); os.IsNotExist(e) {
 		log.Fatalln("ngapost2md 程序文件不存在:", program)
 	}
 
-	client, err := mgr.InitNGA(program)
-	if err != nil {
-		log.Fatalln("初始化 NGA 客户端出现问题:", err.Error())
+	client, e := mgr.InitNGA(program)
+	if e != nil {
+		log.Fatalln("初始化 NGA 客户端出现问题:", e.Error())
 	}
 
 	addr := fmt.Sprintf(":%d", opts.Port)
@@ -60,9 +61,13 @@ func main() {
 	if token != "" {
 		log.Printf("设置访问令牌: %s\n", token)
 	}
-	srv, err := mgr.NewServer(&mgr.Config{Addr: addr, Token: token}, client)
-	if err != nil {
-		log.Fatalln("初始化服务器出现问题:", err.Error())
+	srv, e := mgr.NewServer(&mgr.Config{
+		Addr:  addr,
+		Token: token,
+		Smile: opts.Smile,
+	}, client)
+	if e != nil {
+		log.Fatalln("初始化服务器出现问题:", e.Error())
 	}
 	srv.Run()
 }

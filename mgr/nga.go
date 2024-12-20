@@ -22,6 +22,8 @@ type Client struct {
 	version string
 	root    string
 	cfg     *ini.File
+	ua      string
+	baseURL string
 }
 
 func InitNGA(program string) (*Client, error) {
@@ -54,11 +56,11 @@ func InitNGA(program string) (*Client, error) {
 		return nil, errors.New("请在配置文件中填写正确的 network.ngaPassportCid")
 	}
 
-	// 因为 post2md 使用 ini.Load("config.ini")
-
 	client.root = dir
 	client.version = version
 	client.cfg = cfg
+	client.ua = ua
+	client.baseURL = network.Key("base_url").String()
 	return client, nil
 }
 
@@ -88,6 +90,13 @@ func (c *Client) GetVersion() string {
 		}
 	}
 	return c.version
+}
+
+func (c *Client) GetUA() string {
+	return c.ua
+}
+func (c *Client) BaseURL() string {
+	return c.baseURL
 }
 
 //	func (c *Client) CheckVersion() bool {

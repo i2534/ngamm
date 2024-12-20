@@ -21,8 +21,22 @@
         const id = '{{.ID}}';
         const token = '{{.Token}}';
         const baseUrl = window.location.origin;
+        const ngaPostBase = '{{.BaseUrl}}/read.php?tid=';
         const mbu = `${baseUrl}/view/${(token && token.length) ? token : '-'}/${id}/`;
         marked.use(markedBaseUrl.baseUrl(mbu));
+        const renderer = {
+            heading({ tokens, depth }) {
+                const text = this.parser.parseInline(tokens);
+                if (depth === 3) {
+                    return `<h${depth}><a href="${ngaPostBase}${id}" target="_blank">${text}</a></h${depth}>`;
+                }
+                if (depth === 5) {
+                    return `<h${depth}>${text.replaceAll(/&lt;.+?&gt;/g, '')}</h${depth}>`;
+                }
+                return `<h${depth}>${text}</h${depth}>`;
+            }
+        };
+        marked.use({ renderer });
         const content = document.querySelector('#content');
         content.innerHTML = marked.parse(content.innerHTML);
     </script>
