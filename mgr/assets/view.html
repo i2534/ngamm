@@ -34,6 +34,9 @@
                     return `<h${depth}>${text.replaceAll(/&lt;.+?&gt;/g, '')}</h${depth}>`;
                 }
                 return `<h${depth}>${text}</h${depth}>`;
+            },
+            image({ href, title, text }) {
+                return `<img src="${href}" alt="${text}" title="${title}" loading="lazy">`;
             }
         };
         marked.use({ renderer });

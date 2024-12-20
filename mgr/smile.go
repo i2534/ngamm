@@ -9,6 +9,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 )
 
 type item struct {
@@ -21,15 +22,12 @@ type Smile struct {
 	List []item `json:"list"`
 
 	root   string
-	cache  map[string]*item
-	failed map[string]bool
+	cache  sync.Map
+	failed sync.Map
 }
 
 func Unmarshal(data []byte) (*Smile, error) {
-	smile := &Smile{
-		cache:  make(map[string]*item),
-		failed: make(map[string]bool),
-	}
+	smile := &Smile{}
 	if e := json.Unmarshal(data, smile); e != nil {
 		return nil, e
 	}
@@ -37,13 +35,14 @@ func Unmarshal(data []byte) (*Smile, error) {
 }
 
 func (s *Smile) find(name string) *item {
-	if v, has := s.cache[name]; has {
-		return v
+	if v, has := s.cache.Load(name); has {
+		return v.(*item)
 	}
+
 	n := name[:strings.LastIndex(name, ".")]
 	for _, v := range s.List {
 		if strings.HasPrefix(n, v.Prefix) && strings.HasSuffix(n, v.Name) {
-			s.cache[n] = &v
+			s.cache.Store(name, &v)
 			return &v
 		}
 	}
@@ -67,7 +66,8 @@ func (s *Smile) Local(name, ua string) string {
 	if IsExist(path) {
 		return path
 	}
-	if s.failed[name] {
+
+	if _, ok := s.failed.Load(name); ok {
 		return ""
 	}
 
@@ -77,7 +77,7 @@ func (s *Smile) Local(name, ua string) string {
 			if e := s.fetch(path, url, ua); e != nil {
 				log.Println(e.Error())
 			} else {
-				s.failed[name] = true
+				s.failed.Store(name, true)
 			}
 		}()
 	}
