@@ -8,6 +8,7 @@ import (
 	"os"
 	"path/filepath"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/gin-contrib/gzip"
@@ -271,7 +272,7 @@ func (srv *Server) viewTopicRes() func(c *gin.Context) {
 					c.String(http.StatusInternalServerError, "Failed to parse embed smiles.json")
 					return
 				} else {
-					smile.root = filepath.Join(cache.topicRoot, SMILE_DIR)
+					smile.root = filepath.Clean(filepath.Join(cache.topicRoot, SMILE_DIR))
 					cache.smile = smile
 				}
 			}
@@ -314,7 +315,13 @@ func (srv *Server) viewTopicRes() func(c *gin.Context) {
 				return
 			}
 
-			file := filepath.Join(topic.root, name)
+			// 确保文件路径在 root 目录下, 防止路径穿越
+			file := filepath.Join(topic.root, filepath.Clean(name))
+			if !strings.HasPrefix(file, topic.root) {
+				c.String(http.StatusBadRequest, "Illegal file name")
+				return
+			}
+
 			data, e := os.ReadFile(file)
 			if e != nil {
 				c.String(http.StatusInternalServerError, "Failed to read asset")
@@ -365,10 +372,14 @@ func (srv *Server) viewTopic() func(c *gin.Context) {
 			return
 		}
 
+		token := srv.Cfg.tokenHash
+		if token == "" {
+			token = "-"
+		}
 		data := viewTplData{
 			Title:    title,
 			ID:       id,
-			Token:    srv.Cfg.tokenHash,
+			Token:    token,
 			BaseUrl:  srv.nga.BaseURL(),
 			Markdown: template.HTML(markdown),
 		}

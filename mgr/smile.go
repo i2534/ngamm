@@ -41,12 +41,30 @@ func (s *Smile) find(name string) *item {
 
 	n := name[:strings.LastIndex(name, ".")]
 	for _, v := range s.List {
-		if strings.HasPrefix(n, v.Prefix) && strings.HasSuffix(n, v.Name) {
+		b := v.Path == name //完全匹配路径
+		if !b {
+			if v.Prefix == "" { // 无前缀, 完全匹配名称 TODO: 此处可能有问题, 因为基础表情基本没人用
+				b = v.Name == n
+			} else { //前缀匹配且后缀匹配名称
+				b = strings.HasPrefix(n, v.Prefix) && strings.HasSuffix(n, v.Name)
+			}
+		}
+
+		if b {
 			s.cache.Store(name, &v)
 			return &v
 		}
 	}
 	return nil
+}
+
+func (s *Smile) IsPath(name string) bool {
+	for _, v := range s.List {
+		if v.Path == name {
+			return true
+		}
+	}
+	return false
 }
 
 func (s *Smile) URL(name string) string {

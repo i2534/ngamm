@@ -63,7 +63,7 @@ type Topic struct {
 }
 
 func LoadTopic(root string, id int) (*Topic, error) {
-	dir := filepath.Join(root, strconv.Itoa(id))
+	dir := filepath.Join(filepath.Clean(root), strconv.Itoa(id))
 	log.Printf("Loading topic %d from %s\n", id, dir)
 
 	topic := &Topic{
