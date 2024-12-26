@@ -210,8 +210,8 @@ func (srv *Server) process() {
 				log.Println("No process.ini found for topic, create it...")
 
 				data := `[local]
-max_page = 0
-max_floor = 0`
+max_page = 1
+max_floor = -1`
 				if e := os.WriteFile(ini, []byte(data), 0644); e != nil {
 					log.Println("Failed to create process.ini:", e)
 				}

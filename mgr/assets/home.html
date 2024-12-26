@@ -5,87 +5,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>NGA 帖子管理</title>
-    <style>
-        body {
-            background-color: #f0f8ff;
-            font-family: Arial, sans-serif;
-        }
-
-        table {
-            width: 100%;
-            border-collapse: collapse;
-        }
-
-        h2 {
-            margin: 5px;
-        }
-
-        th,
-        td {
-            border: 1px solid #ddd;
-            padding: 8px;
-        }
-
-        th {
-            background-color: #f2f2f2;
-            text-align: left;
-            cursor: pointer;
-        }
-
-        tr:nth-child(even) {
-            background-color: #f9f9f9;
-        }
-
-        tr:hover {
-            background-color: #ddd;
-        }
-
-        button {
-            padding: 5px 10px;
-            margin: 2px;
-            border: none;
-            background-color: #4CAF50;
-            color: white;
-            cursor: pointer;
-        }
-
-        button:hover {
-            background-color: #45a049;
-        }
-
-        .delete-button {
-            background-color: #f44336;
-        }
-
-        .delete-button:hover {
-            background-color: #e53935;
-        }
-
-        .update-button {
-            background-color: #ff9800;
-        }
-
-        .update-button:hover {
-            background-color: #fb8c00;
-        }
-
-        .hidden {
-            display: none;
-        }
-
-        .inline {
-            display: inline-block;
-            margin-right: 10px;
-        }
-
-        .update-success {
-            color: #45a049;
-        }
-
-        .update-failed {
-            color: #ff9800;
-        }
-    </style>
+    <link rel="stylesheet" href="asset/home.css">
 </head>
 
 <body>
@@ -94,21 +14,33 @@
         <input type="text" id="authToken" placeholder="Authorization Token">
         <button onclick="setAuthToken()">设置</button>
     </div>
-    <h2 class="inline">创建帖子</h2>
+    <h2 class="inline">添加帖子</h2>
     <input type="number" id="createId" placeholder="帖子 ID">
-    <button onclick="createTopic()">创建</button>
+    <button onclick="createTopic()">添加</button>
     <h2>帖子列表</h2>
     <div id="topics"></div>
+    <dialog id="schedDialog">
+        <div class="dialog-content">
+            <h2>任务计划更新帖子设置</h2>
+            <input type="hidden" id="TopicID">
+            <p>计划公式(cron), 为空则代表不自动更新, <a href="https://godoc.org/github.com/robfig/cron" target="_blank">公式说明</a></p>
+            <input type="text" id="UpdateCron">
+            <p>自动更新失败后最大重试次数, 小于等于 0 则代表一直重试</p>
+            <input type="number" id="MaxRetryCount">
+            <button onclick="submitSched()">确认</button>
+            <button onclick="closeDialog()">取消</button>
+        </div>
+    </dialog>
     <script>
+        const hasToken = '{{.HasToken}}'.toLowerCase() === 'true';
         const ngaPostBase = '{{.BaseUrl}}/read.php?tid=';
         const baseUrl = window.location.origin;
         const headers = {};
-        const inputToken = document.getElementById('authToken');
-        const sorts = { key: '', order: 'asc' };
+        const sorts = { key: 'ID', order: 'asc' };
         let topics = [];
 
         function setAuthToken() {
-            const token = inputToken.value;
+            const token = document.getElementById('authToken').value;
             if (token && token.trim() !== '') {
                 headers.Authorization = `${token}`;
                 localStorage.setItem('token', token);
@@ -117,9 +49,12 @@
         }
 
         function loadAuthToken() {
+            if (!hasToken) {
+                return;
+            }
             const token = localStorage.getItem('token');
             if (token) {
-                inputToken.value = token;
+                document.getElementById('authToken').value = token;
                 headers.Authorization = token;
                 showTokenSection();
             }
@@ -143,7 +78,14 @@
 
         function renderTopics() {
             const topicsDiv = document.getElementById('topics');
-            let table = '<table><tr><th onclick="sortTopics(\'Id\')">ID</th><th onclick="sortTopics(\'Title\')">标题</th><th onclick="sortTopics(\'Author\')">楼主</th><th onclick="sortTopics(\'Result.Time\')">最后更新于</th><th>更新任务</th><th>操作</th></tr>';
+            let table = `<table><tr>
+                <th onclick="sortTopics('Id')">ID</th>
+                <th onclick="sortTopics('Title')">标题</th>
+                <th onclick="sortTopics('Author')">楼主</th>
+                <th onclick="sortTopics('Result.Time')">最后更新于</th>
+                <th>更新计划</th>
+                <th>操作</th>
+                </tr>`;
             topics.forEach(topic => {
                 table += `<tr>
                     <td><a href="${ngaPostBase}${topic.Id}" target="_blank">${topic.Id}</a></td>
@@ -152,9 +94,10 @@
                     <td><span class="update-${topic.Result.Success ? 'success' : 'failed'}">${topic.Result.Time}<span></td>
                     <td>${topic.Metadata.UpdateCron}</td>
                     <td>
-                        <button onclick="viewTopic(${topic.Id})">查看</button>
-                        <button class="update-button" onclick="updateTopic(${topic.Id})">更新</button>
-                        <button class="delete-button" onclick="deleteTopic(${topic.Id})">删除</button>
+                        <button onclick="viewTopic(${topic.Id})" title="查看帖子内容">查看</button>
+                        <button class="fresh-button" onclick="freshTopic(${topic.Id})" title="立即更新帖子">更新</button>
+                        <button class="sched-button" onclick="schedTopic(${topic.Id})" title="任务计划更新帖子">计划</button>
+                        <button class="delete-button" onclick="deleteTopic(${topic.Id})" title="删除帖子到回收站">删除</button>
                     </td>
                 </tr>`;
             });
@@ -227,26 +170,36 @@
             }
         }
 
-        async function updateTopic(id) {
-            const md = topics.find(t => t.Id === id).Metadata;
-            const input = prompt("输入自动更新任务定时公式和更新失败后最大重试次数\n(格式: cron, count)\ncron 为空则代表不自动更新\ncount 小于等于 0 则代表一直重试", `${md.UpdateCron}, ${md.MaxRetryCount}`);
-            if (input != null) {
-                const [cron, maxRetryCount] = input.split(',').map(s => s.trim());
-                try {
-                    const response = await fetch(`${baseUrl}/topic/${id}`, {
-                        method: 'POST',
-                        headers: { ...headers, 'Content-Type': 'application/json' },
-                        body: JSON.stringify({ UpdateCron: cron, MaxRetryCount: parseInt(maxRetryCount) })
-                    });
-                    const data = await response.json();
-                    if (!response.ok) {
-                        throw new Error(data.error);
-                    }
-                    alert(`更新帖子 ${data} 成功`);
-                    listTopics();
-                } catch (error) {
-                    alert(error.message);
+        async function schedTopic(id) {
+            const dialog = document.getElementById('schedDialog');
+            if (dialog) {
+                document.getElementById('TopicID').value = id;
+                const md = topics.find(t => t.Id === id).Metadata;
+                for (const name of ['UpdateCron', 'MaxRetryCount']) {
+                    document.getElementById(name).value = md[name];
                 }
+                dialog.showModal();
+            }
+        }
+        async function submitSched() {
+            closeDialog();
+            const id = document.getElementById('TopicID').value;
+            const cron = document.getElementById('UpdateCron').value;
+            const maxRetryCount = document.getElementById('MaxRetryCount').value;
+            try {
+                const response = await fetch(`${baseUrl}/topic/${id}`, {
+                    method: 'POST',
+                    headers: { ...headers, 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ UpdateCron: cron, MaxRetryCount: parseInt(maxRetryCount) })
+                });
+                const data = await response.json();
+                if (!response.ok) {
+                    throw new Error(data.error);
+                }
+                alert(`更新帖子 ${data} 成功`);
+                listTopics();
+            } catch (error) {
+                alert(error.message);
             }
         }
 
@@ -262,6 +215,27 @@
         async function viewTopic(id) {
             const token = headers.Authorization ? await hashToken(headers.Authorization) : '-';
             window.open(`${baseUrl}/view/${token}/${id}`, '_blank');
+        }
+
+        function closeDialog(dialogId) {
+            const dialog = dialogId ? document.getElementById(dialogId) : document.querySelector('dialog[open]');
+            if (dialog) {
+                dialog.close();
+            }
+        }
+
+        async function freshTopic(id) {
+            try {
+                const response = await fetch(`${baseUrl}/topic/fresh/${id}`, { method: 'POST', headers });
+                const data = await response.json();
+                if (!response.ok) {
+                    throw new Error(data.error);
+                }
+                alert(`帖子 ${data} 已加入更新队列`);
+                listTopics();
+            } catch (error) {
+                alert(error.message);
+            }
         }
 
         window.addEventListener('load', () => {

@@ -1,0 +1,144 @@
+body {
+    background-color: #f0f8ff;
+    font-family: Arial, sans-serif;
+}
+
+table {
+    width: 100%;
+    border-collapse: collapse;
+}
+
+h2 {
+    margin: 5px;
+}
+
+th,
+td {
+    border: 1px solid #ddd;
+    padding: 8px;
+}
+
+th {
+    background-color: #f2f2f2;
+    text-align: left;
+    cursor: pointer;
+}
+
+tr:nth-child(even) {
+    background-color: #f9f9f9;
+}
+
+tr:hover {
+    background-color: #ddd;
+}
+
+button {
+    padding: 5px 10px;
+    margin: 2px;
+    border: none;
+    background-color: #4CAF50;
+    color: white;
+    cursor: pointer;
+    border-radius: 5px;
+}
+
+button:hover {
+    background-color: #45a049;
+}
+
+.hidden {
+    display: none;
+}
+
+.inline {
+    display: inline-block;
+    margin-right: 10px;
+}
+
+.delete-button {
+    background-color: #f44336;
+}
+
+.delete-button:hover {
+    background-color: #e53935;
+}
+
+.sched-button {
+    background-color: #ff9800;
+}
+
+.sched-button:hover {
+    background-color: #fb8c00;
+}
+
+.fresh-button {
+    background-color: #2196F3;
+}
+
+.fresh-button:hover {
+    background-color: #1E88E5;
+}
+
+.update-success {
+    color: #45a049;
+}
+
+.update-failed {
+    color: #ff9800;
+}
+
+dialog {
+    border: none;
+    border-radius: 10px;
+    box-shadow: 0 4px 20px rgba(0, 0, 0, 0.2);
+    max-width: 500px;
+    width: 100%;
+    padding: 0;
+}
+
+dialog::backdrop {
+    background: rgba(0, 0, 0, 0.6);
+}
+
+.dialog-content {
+    padding: 20px;
+    background-color: #fff;
+    border-radius: 10px;
+}
+
+.dialog-content h2 {
+    margin-top: 0;
+}
+
+.dialog-content input {
+    width: calc(100% - 20px);
+    padding: 10px;
+    margin: 10px 0;
+    border: 1px solid #ddd;
+    border-radius: 5px;
+}
+
+.dialog-content button {
+    padding: 10px 20px;
+    margin: 10px 5px;
+    border: none;
+    cursor: pointer;
+}
+
+.dialog-content button:first-of-type {
+    background-color: #4CAF50;
+    color: white;
+}
+
+.dialog-content button:first-of-type:hover {
+    background-color: #45a049;
+}
+
+.dialog-content button:last-of-type {
+    background-color: #f44336;
+    color: white;
+}
+
+.dialog-content button:last-of-type:hover {
+    background-color: #e53935;
+}

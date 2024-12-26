@@ -4,6 +4,7 @@ import (
 	"embed"
 	"html/template"
 	"log"
+	"mime"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -38,6 +39,7 @@ func (srv *Server) regHandlers() {
 		tg.PUT("/:id", srv.topicAdd())
 		tg.POST("/:id", srv.topicUpdate())
 		tg.DELETE("/:id", srv.topicDel())
+		tg.POST("/fresh/:id", srv.topicFresh())
 	}
 
 	vg := r.Group("/view")
@@ -50,6 +52,8 @@ func (srv *Server) regHandlers() {
 	}
 
 	r.GET("/", srv.homePage())
+	r.GET("/favicon.ico", srv.favicon())
+	r.GET("/asset/:name", srv.asset())
 }
 
 func toErr(msg string) gin.H {
@@ -152,10 +156,8 @@ func (srv *Server) topicAdd() func(c *gin.Context) {
 			go topic.Save()
 
 			c.JSON(http.StatusCreated, id)
-			return
 		default:
 			c.JSON(http.StatusServiceUnavailable, toErr("Too many adding requests"))
-			return
 		}
 	}
 }
@@ -240,6 +242,33 @@ func (srv *Server) topicUpdate() func(c *gin.Context) {
 		go topic.Save()
 
 		c.JSON(http.StatusOK, id)
+	}
+}
+
+func (srv *Server) topicFresh() func(c *gin.Context) {
+	return func(c *gin.Context) {
+		id, e := strconv.Atoi(c.Param("id"))
+		if e != nil {
+			c.JSON(http.StatusBadRequest, toErr("Invalid topic ID"))
+			return
+		}
+
+		cache := srv.cache
+		cache.lock.RLock()
+		defer cache.lock.RUnlock()
+
+		_, has := cache.topics[id]
+		if !has {
+			c.JSON(http.StatusNotFound, toErr("Topic not found"))
+			return
+		}
+
+		select {
+		case cache.queue <- id:
+			c.JSON(http.StatusOK, id)
+		default:
+			c.JSON(http.StatusServiceUnavailable, toErr("Too many adding requests"))
+		}
 	}
 }
 
@@ -398,13 +427,42 @@ func (srv *Server) homePage() func(c *gin.Context) {
 			return
 		}
 		data := struct {
-			BaseUrl string
+			HasToken bool
+			BaseUrl  string
 		}{
-			BaseUrl: srv.nga.BaseURL(),
+			HasToken: srv.Cfg.Token != "",
+			BaseUrl:  srv.nga.BaseURL(),
 		}
 		c.Header("Content-Type", HTML_HEADER)
 		if e := tmpl.Execute(c.Writer, data); e != nil {
 			c.String(http.StatusInternalServerError, "Failed to render view page")
 		}
+	}
+}
+
+func (srv *Server) favicon() func(c *gin.Context) {
+	return func(c *gin.Context) {
+		data, err := efs.ReadFile("assets/favicon.ico")
+		if err != nil {
+			c.String(http.StatusInternalServerError, "Failed to read favicon.ico")
+			return
+		}
+		c.Data(http.StatusOK, "image/x-icon", data)
+	}
+}
+
+func (srv *Server) asset() func(c *gin.Context) {
+	return func(c *gin.Context) {
+		name := c.Param("name")
+		data, err := efs.ReadFile("assets/" + name)
+		if err != nil {
+			c.String(http.StatusInternalServerError, "Failed to read asset "+name)
+			return
+		}
+		ct := mime.TypeByExtension(filepath.Ext(name))
+		if ct == "" {
+			ct = "application/octet-stream"
+		}
+		c.Data(http.StatusOK, ct, data)
 	}
 }
