@@ -46,6 +46,8 @@ func main() {
 		log.Fatalln("获取当前工作目录出现问题:", e.Error())
 	}
 
+	log.Printf("NGAMM 版本: %s @ %s\n", gitHash, buildTime)
+
 	program := filepath.Join(wd, opts.Program)
 	if _, e := os.Stat(program); os.IsNotExist(e) {
 		log.Fatalln("ngapost2md 程序文件不存在:", program)

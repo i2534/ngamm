@@ -3,7 +3,35 @@
 
 可以执行 [Cron](https://godoc.org/github.com/robfig/cron) 任务
 
-## 使用方式
+## docker 方式(推荐)
+
+自动构建 NGAMM 并且整合 ngapost2md
+
+你只需要提供正确的 [`config.ini`](https://github.com/ludoux/ngapost2md)
+
+### docker
+
+```sh
+docker pull i2534/ngamm:latest
+docker run -it -p 5842:5842 -v ./data:/app/data -e TOKEN="" i2534/ngamm:latest
+```
+
+### docker compose
+```yaml
+services:
+  ngamm:
+    image: i2534/ngamm:latest
+    container_name: ngamm
+    ports:
+      - "5842:5842"
+    volumes:
+      - ./data:/app/data
+    environment:
+      - TOKEN=
+    restart: unless-stopped
+```
+
+## 单独程序方式
 ### 准备 ngapost2md
 
 先去 [ngapost2md](https://github.com/ludoux/ngapost2md) 下载最新的版本, 然后根据 [配置说明](https://github.com/ludoux/ngapost2md) 配置好, 确保单独使用 
@@ -40,53 +68,3 @@ chmod +x ngamm
 浏览器访问 `url:port`
 
 `port` 默认为 `5842`
-
-#### 使用 API 管理
-
-##### 获取已保存的帖子列表
-使用 Postman, ApiPost 等 Rest API 测试工具访问
-```
-GET http://[ip]:5842/topic
-```
-或者使用 curl 
-```
-curl -X GET http://[ip]:5842/topic
-```
-
-##### 添加一个保存帖子的任务
-使用 Postman, ApiPost 等 Rest API 测试工具访问
-```
-PUT http://[ip]:5842/topic/{id}
-```
-或者使用 curl 
-```
-curl -X PUT http://[ip]:5842/topic/{id}
-```
-将 `{id}` 替换成实际的帖子ID
-
-##### 设置帖子定时更新
-使用 Postman, ApiPost 等 Rest API 测试工具访问
-```
-POST http://[ip]:5842/topic/{id}
-Content-Type: application/json
-
-{
-    "UpdateCron": "@every 1h"
-}
-```
-或者使用 curl 
-```
-curl -X POST "http://[ip]:5842/topic/{id}" \
-     -H "Content-Type: application/json" \
-     -d '{
-           "UpdateCron": "@every 1h"
-         }'
-```
-将 `{id}` 替换成实际的帖子ID, UpdateCron 的取值可以参考 [Cron](https://godoc.org/github.com/robfig/cron) 的说明, `@every 1h` 表示每一个小时执行一次更新
-
-##### 查看帖子内容
-浏览器访问
-```
-http://[ip]:5842/view/{id}
-```
-将 `{id}` 替换成实际保存后的帖子ID
