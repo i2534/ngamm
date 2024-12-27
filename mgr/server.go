@@ -204,6 +204,9 @@ func (srv *Server) process() {
 		log.Println("Processing topic", id)
 		// 先检查 process.ini, assets.json 存在与否, 如果文件夹存在但文件不存在, ngapost2md 会认为其是无效的帖子, 不予更新
 		dir := filepath.Join(cache.topicRoot, strconv.Itoa(id))
+		// 创建文件夹, 防止因为异步导致文件夹在判断 process.ini, assets.json 之后被创建, 然后导致 ngapost2md 无法更新
+		os.MkdirAll(dir, 0755)
+
 		if IsExist(dir) {
 			ini := filepath.Join(dir, PROCESS_INI)
 			if !IsExist(ini) {
