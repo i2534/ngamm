@@ -18,6 +18,11 @@ RUN ./main -v
 FROM alpine:latest
 # 安装 ngapost2md 所需的共享库
 RUN apk add --no-cache libc6-compat
+# 设置时区为东八区
+RUN apk add --no-cache tzdata \
+    && cp /usr/share/zoneinfo/Asia/Shanghai /etc/localtime \
+    && echo "Asia/Shanghai" > /etc/timezone \
+    && apk del tzdata
 # 设置工作目录
 WORKDIR /app
 # 从构建阶段复制二进制文件和脚本文件

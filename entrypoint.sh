@@ -22,5 +22,6 @@ elif [ "$cmd" = "start" ]; then
     cp -rn $dir_np2md/* $dir_data/
     cd $dir_work
     chmod +x main
+    export GIN_MODE=release
     ./main -t "$TOKEN" -p 5842 -m data/ngapost2md
 fi
