@@ -204,12 +204,38 @@
         }
 
         function hashToken(token) {
-            return crypto.subtle.digest('SHA-1', new TextEncoder().encode(token)).then(hashBuffer => {
-                return Array.from(new Uint8Array(hashBuffer))
-                    .map(b => b.toString(16).padStart(2, '0'))
-                    .filter((_, i) => i % 5 == 0)
-                    .join('');
-            });
+            if (crypto && crypto.subtle) {// 这坑爹的API, 只在 https 下才能用
+                return crypto.subtle.digest('SHA-1', new TextEncoder().encode(token))
+                    .then(hashBuffer => {
+                        return Array.from(new Uint8Array(hashBuffer))
+                            .map(b => b.toString(16).padStart(2, '0'))
+                            .filter((_, i) => i % 5 == 0)
+                            .join('');
+                    });
+            } else {
+                return new Promise((resolve, reject) => {
+                    const calc = () => {
+                        const hash = sha1(token);
+                        const ret = [];
+                        for (let i = 0; i < hash.length; i += 2) {
+                            if (i % 10 === 0) {
+                                ret.push(hash.substring(i, i + 2));
+                            }
+                        }
+                        return ret.join('');
+                    }
+                    if (typeof sha1 === 'undefined') {
+                        const script = document.createElement('script');
+                        script.src = 'https://cdn.jsdelivr.net/npm/sha-1';
+                        script.onload = () => {
+                            resolve(calc());
+                        };
+                        document.head.appendChild(script);
+                    } else {
+                        return resolve(calc());
+                    }
+                });
+            }
         }
 
         async function viewTopic(id) {
