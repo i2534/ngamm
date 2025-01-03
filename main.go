@@ -13,6 +13,7 @@ import (
 var (
 	buildTime string
 	gitHash   string
+	logFlags  = log.LstdFlags
 )
 
 type Option struct {
@@ -24,6 +25,9 @@ type Option struct {
 }
 
 func main() {
+	log.SetOutput(os.Stdout)
+	log.SetFlags(logFlags)
+
 	var opts Option
 	parser := flags.NewParser(&opts, flags.Default)
 	_, e := parser.Parse()

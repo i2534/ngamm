@@ -63,11 +63,51 @@ type Server struct {
 	cron     *cron.Cron
 }
 
+func customLogFormatter(param gin.LogFormatterParams) string {
+	var statusColor, methodColor, resetColor string
+	if param.IsOutputColor() {
+		statusColor = param.StatusCodeColor()
+		methodColor = param.MethodColor()
+		resetColor = param.ResetColor()
+	}
+
+	if param.Latency > time.Minute {
+		param.Latency = param.Latency.Truncate(time.Second)
+	}
+
+	return fmt.Sprintf("%s%s %-7s %s |%s %3d %s| %13v | %15s | %#v\n%s",
+		formatTimestamp(param.TimeStamp),
+		methodColor, param.Method, resetColor,
+		statusColor, param.StatusCode, resetColor,
+		param.Latency,
+		param.ClientIP,
+		param.Path,
+		param.ErrorMessage,
+	)
+}
+
+func formatTimestamp(timestamp time.Time) string {
+	flags := log.Flags()
+	switch {
+	case flags&log.Ldate != 0 && flags&log.Ltime != 0:
+		return timestamp.Format("2006/01/02 15:04:05 ")
+	case flags&log.Ldate != 0:
+		return timestamp.Format("2006/01/02 ")
+	case flags&log.Ltime != 0:
+		return timestamp.Format("15:04:05 ")
+	default:
+		return ""
+	}
+}
+
 func NewServer(cfg *Config, nga *Client) (*Server, error) {
+	engine := gin.New()
+	engine.Use(gin.LoggerWithFormatter(customLogFormatter), gin.Recovery())
+
 	srv := &Server{
 		Raw: &http.Server{
 			Addr:    cfg.Addr,
-			Handler: gin.Default(),
+			Handler: engine,
 		},
 		Cfg:      cfg,
 		nga:      nga,
@@ -183,7 +223,7 @@ func (srv *Server) addCron(topic *Topic) {
 	if uc != "" {
 		log.Println("Adding cron job for topic", topic.Id, ":", uc)
 		id, e := srv.cron.AddFunc(uc, func() {
-			log.Println("Add cron job for topic", topic.Id)
+			log.Println("Add process task for topic", topic.Id)
 			srv.cache.queue <- topic.Id
 		})
 		if e != nil {

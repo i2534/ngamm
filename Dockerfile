@@ -11,7 +11,7 @@ RUN git clone ${GHPROXY}https://github.com/i2534/ngamm.git .
 # ENV GOPROXY=https://goproxy.cn,direct
 RUN go mod download
 # 构建应用程序
-RUN go build -ldflags "-X main.buildTime=$(date +%Y-%m-%dT%H:%M:%S) -X main.gitHash=$(git describe --tags --always)" -v -o main .
+RUN go build -ldflags "-X main.buildTime=$(date +%Y-%m-%dT%H:%M:%S) -X main.gitHash=$(git describe --tags --always) -X main.logFlags=0" -v -o main .
 RUN ./main -v
 
 # 第二阶段：创建运行时镜像
@@ -27,8 +27,8 @@ RUN apk add --no-cache tzdata \
 WORKDIR /app
 # 从构建阶段复制二进制文件和脚本文件
 COPY --from=builder /app/main .
-# COPY --from=builder /app/entrypoint.sh .
-COPY entrypoint.sh .
+COPY --from=builder /app/entrypoint.sh .
+# COPY entrypoint.sh .
 # 赋予脚本执行权限并执行脚本
 RUN chmod +x entrypoint.sh && sh entrypoint.sh fetch
 
