@@ -5,6 +5,7 @@ import (
 	"log"
 	"os"
 	"path/filepath"
+	"strconv"
 
 	"github.com/i2534/ngamm/mgr"
 	"github.com/jessevdk/go-flags"
@@ -13,7 +14,7 @@ import (
 var (
 	buildTime string
 	gitHash   string
-	logFlags  = log.LstdFlags
+	logFlags  string
 )
 
 type Option struct {
@@ -26,7 +27,12 @@ type Option struct {
 
 func main() {
 	log.SetOutput(os.Stdout)
-	log.SetFlags(logFlags)
+
+	flag, fe := strconv.Atoi(logFlags)
+	if fe != nil {
+		flag = log.LstdFlags
+	}
+	log.SetFlags(flag)
 
 	var opts Option
 	parser := flags.NewParser(&opts, flags.Default)
