@@ -7,7 +7,7 @@
 
 自动构建 NGAMM 并且整合 ngapost2md
 
-你只需要提供正确的 [`config.ini`](https://github.com/ludoux/ngapost2md)
+你只需要提供正确的 [`config.ini`](https://github.com/ludoux/ngapost2md) 放到映射的 `data` 目录下
 
 ### docker
 

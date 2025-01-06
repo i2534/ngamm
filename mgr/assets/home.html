@@ -15,7 +15,7 @@
         <button onclick="setAuthToken()">设置</button>
     </div>
     <h2 class="inline">添加帖子</h2>
-    <input type="number" id="createId" placeholder="帖子 ID">
+    <input type="text" id="createId" placeholder="帖子 ID 或 地址">
     <button onclick="createTopic()">添加</button>
     <h2>帖子列表</h2>
     <div id="topics"></div>
@@ -136,10 +136,19 @@
         }
 
         async function createTopic() {
-            const id = document.getElementById('createId').value;
+            let id = document.getElementById('createId').value;
             if (!id) {
                 alert('请输入帖子 ID');
                 return;
+            }
+            if (!/^\d+$/.test(id)) {
+                const match = id.match(/tid=(\d+)/);
+                if (match) {
+                    id = match[1];
+                } else {
+                    alert('帖子 ID 格式错误');
+                    return;
+                }
             }
             try {
                 const response = await fetch(`${baseUrl}/topic/${id}`, { method: 'PUT', headers });

@@ -4,7 +4,9 @@ module github.com/i2534/ngamm
 go 1.23
 
 require (
+	github.com/gin-contrib/gzip v1.0.1
 	github.com/gin-gonic/gin v1.10.0
+	github.com/go-playground/assert/v2 v2.2.0
 	github.com/jessevdk/go-flags v1.6.1
 	github.com/robfig/cron/v3 v3.0.1
 	gopkg.in/ini.v1 v1.67.0
@@ -16,7 +18,6 @@ require (
 	github.com/cloudwego/base64x v0.1.4 // indirect
 	github.com/cloudwego/iasm v0.2.0 // indirect
 	github.com/gabriel-vasile/mimetype v1.4.7 // indirect
-	github.com/gin-contrib/gzip v1.0.1 // indirect
 	github.com/gin-contrib/sse v0.1.0 // indirect
 	github.com/go-playground/locales v0.14.1 // indirect
 	github.com/go-playground/universal-translator v0.18.1 // indirect

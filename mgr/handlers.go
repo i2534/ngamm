@@ -14,6 +14,7 @@ import (
 
 	"github.com/gin-contrib/gzip"
 	"github.com/gin-gonic/gin"
+	"github.com/robfig/cron/v3"
 )
 
 const (
@@ -237,6 +238,15 @@ func (srv *Server) topicUpdate() func(c *gin.Context) {
 			return
 		}
 		topic.Metadata.Merge(md)
+
+		uc := topic.Metadata.UpdateCron
+		if uc != "" {
+			_, err := cron.ParseStandard(uc)
+			if err != nil {
+				c.JSON(http.StatusBadRequest, toErr("Invalid cron expression"))
+				return
+			}
+		}
 
 		srv.addCron(topic)
 		go topic.Save()

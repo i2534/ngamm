@@ -30,9 +30,15 @@
             const oldTitle = img.title;
             const oldCursor = img.style.cursor;
             img.style.cursor = 'pointer';
-            img.title = 'ClickReload';
+            img.title = '点击重载';
 
+            let isReloading = false;
             const reload = function () {
+                if (isReloading) {
+                    return;
+                }
+                isReloading = true;
+
                 let src = img.src;
                 const i = src.indexOf('?t=');
                 if (i !== -1) {
@@ -46,6 +52,10 @@
                 }
                 img.style.cursor = oldCursor;
                 img.title = oldTitle;
+
+                setTimeout(() => {
+                    isReloading = false;
+                }, 1000);
             };
 
             img.addEventListener('click', reload);
