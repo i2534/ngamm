@@ -39,6 +39,19 @@
         const sorts = { key: 'Id', order: 'asc' };
         let topics = [];
 
+        function dealTopic(id, callback) {
+            if (!id || !topics || topics.length === 0) {
+                return;
+            }
+            const index = topics.findIndex(t => t.Id === id || t.Id === parseInt(id));
+            if (index >= 0) {
+                const topic = topics[index];
+                if (topic) {
+                    callback(topic, index);
+                }
+            }
+        }
+
         function setAuthToken() {
             const token = document.getElementById('authToken').value;
             if (token && token.trim() !== '') {
@@ -64,8 +77,8 @@
             document.getElementById('tokenSection').classList.remove('hidden');
         }
 
-        async function fetchTopics() {
-            const response = await fetch(`${baseUrl}/topic`, { headers });
+        async function fetchTopics(id) {
+            const response = await fetch(`${baseUrl}/topic${id ? ('/' + id) : ''}`, { headers });
             if (response.status === 401) {
                 showTokenSection();
                 throw new Error('需要设置 Token');
@@ -157,7 +170,12 @@
                     throw new Error(data.error);
                 }
                 alert(`帖子 ${data} 创建成功`);
-                listTopics();
+                // listTopics();
+                const topic = await fetchTopics(id);
+                if (topic) {
+                    topics.push(topic);
+                    renderTopics();
+                }
             } catch (error) {
                 alert(error.message);
             }
@@ -172,7 +190,11 @@
                         throw new Error(data.error);
                     }
                     alert(`删除帖子 ${data} 成功`);
-                    listTopics();
+                    // listTopics();
+                    dealTopic(id, (_, index) => {
+                        delete topics[index];
+                        renderTopics();
+                    });
                 } catch (error) {
                     alert(error.message);
                 }
@@ -205,8 +227,16 @@
                 if (!response.ok) {
                     throw new Error(data.error);
                 }
-                alert(`更新帖子 ${data} 成功`);
-                listTopics();
+                alert(`更新计划 ${data} 成功`);
+                // listTopics();
+
+                const topic = await fetchTopics(id);
+                if (topic) {
+                    dealTopic(id, (_, index) => {
+                        topics[index] = topic;
+                        renderTopics();
+                    });
+                }
             } catch (error) {
                 alert(error.message);
             }
@@ -267,15 +297,48 @@
                     throw new Error(data.error);
                 }
                 alert(`帖子 ${data} 已加入更新队列`);
-                listTopics();
+                // listTopics();
+                const topic = await fetchTopics(id);
+                if (topic) {
+                    dealTopic(id, (_, index) => {
+                        topics[index] = topic;
+                        renderTopics();
+                    });
+                }
             } catch (error) {
                 alert(error.message);
             }
         }
 
+        function setupSSE() {
+            const es = new EventSource(`${baseUrl}/sse`);
+            es.onmessage = async function (event) {
+                if (!event.data) {
+                    return;
+                }
+                console.log('SSE message:', event.data);
+                const data = JSON.parse(event.data);
+                if (data.event === 'topicUpdated') {
+                    const id = data.data;
+                    console.log('Topic updated:', id);
+                    const topic = await fetchTopics(id);
+                    if (topic) {
+                        dealTopic(id, (_, index) => {
+                            topics[index] = topic;
+                            renderTopics();
+                        });
+                    }
+                }
+            };
+            es.onerror = function (event) {
+                console.error('SSE error:', event);
+            };
+        }
+
         window.addEventListener('load', () => {
             loadAuthToken();
             listTopics();
+            setupSSE();
         });
     </script>
 </body>

@@ -3,7 +3,9 @@ package mgr
 import (
 	"context"
 	"crypto/sha1"
+	"encoding/json"
 	"fmt"
+	"io"
 	"log"
 	"net/http"
 	"os"
@@ -52,6 +54,61 @@ func (c *cache) close() {
 	close(c.queue)
 }
 
+type SSEMessage struct {
+	Event string `json:"event"`
+	Data  any    `json:"data"`
+}
+
+type SSE struct {
+	clients *sync.Map // map[chan string]struct{}
+}
+
+func (s *SSE) handler(c *gin.Context) {
+	msgChan := make(chan string)
+	s.clients.Store(msgChan, struct{}{})
+	defer s.clients.Delete(msgChan)
+
+	c.Header("Content-Type", "text/event-stream")
+	c.Header("Cache-Control", "no-cache")
+	c.Header("Connection", "keep-alive")
+	c.Stream(func(w io.Writer) bool {
+		select {
+		case message, ok := <-msgChan:
+			if !ok { // 通道已关闭，停止流式传输
+				return false
+			}
+			c.SSEvent("message", message)
+			return true
+		case <-c.Writer.CloseNotify():
+			close(msgChan)
+			return false
+		}
+	})
+}
+func (s *SSE) notify(message SSEMessage) {
+	m, e := json.Marshal(message)
+	if e != nil {
+		log.Println("Failed to marshal SSE message:", e)
+		return
+	}
+	msg := string(m)
+	s.clients.Range(func(key, _ any) bool {
+		if client, ok := key.(chan string); ok {
+			client <- msg
+		}
+		return true
+	})
+}
+func (s *SSE) close() {
+	s.clients.Range(func(key, _ any) bool {
+		if client, ok := key.(chan string); ok {
+			close(client)
+		}
+		return true
+	})
+	s.clients.Clear()
+}
+
 type Server struct {
 	Raw      *http.Server
 	Cfg      *Config
@@ -61,6 +118,7 @@ type Server struct {
 	stopLock *sync.Mutex
 	cache    *cache
 	cron     *cron.Cron
+	sse      *SSE
 }
 
 func customLogFormatter(param gin.LogFormatterParams) string {
@@ -119,9 +177,12 @@ func NewServer(cfg *Config, nga *Client) (*Server, error) {
 			queue:     make(chan int, QUEUE_SIZE),
 			topicRoot: filepath.Join(nga.GetRoot(), DIR_TOPIC_ROOT),
 		},
+		sse: &SSE{
+			clients: &sync.Map{},
+		},
 	}
 
-	if e := srv.init(); e != nil {
+	if e := srv.init(engine); e != nil {
 		return nil, e
 	}
 	if cfg.Token != "" {
@@ -135,10 +196,18 @@ func NewServer(cfg *Config, nga *Client) (*Server, error) {
 	return srv, nil
 }
 
-func (srv *Server) init() error {
+func (srv *Server) init(engine *gin.Engine) error {
 	go srv.loadTopics()
 
 	srv.regHandlers()
+	engine.GET("/sse", srv.sse.handler)
+	/* engine.GET("/ts", func(ctx *gin.Context) {
+		srv.sse.notify(SSEMessage{
+			Event: "test",
+			Data:  "Hello",
+		})
+		ctx.JSON(http.StatusOK, Now())
+	}) */
 
 	return nil
 }
@@ -285,6 +354,11 @@ max_floor = -1`
 				cache.lock.Lock()
 				cache.topics[id] = topic
 				cache.lock.Unlock()
+
+				srv.sse.notify(SSEMessage{
+					Event: "topicUpdated",
+					Data:  id,
+				})
 			}
 		} else {
 			cache.lock.Lock()
@@ -337,6 +411,8 @@ func (srv *Server) Run() {
 		log.Println("Received stop signal")
 	}
 
+	srv.Stop()
+
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 	if e := srv.Raw.Shutdown(ctx); e != nil {
@@ -346,6 +422,8 @@ func (srv *Server) Run() {
 }
 
 func (srv *Server) Stop() {
+	log.Println("Stopping server...")
+
 	srv.stopLock.Lock()
 	defer srv.stopLock.Unlock()
 
@@ -356,5 +434,9 @@ func (srv *Server) Stop() {
 
 	srv.cron.Stop()
 	srv.cache.close()
+
+	srv.sse.close()
 	close(srv.stopChan)
+
+	log.Println("Server stopped")
 }
