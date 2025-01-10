@@ -24,13 +24,11 @@
         const ngaPostBase = '{{.BaseUrl}}/read.php?tid=';
         marked.use(markedBaseUrl.baseUrl(`${baseUrl}/view/${token}/${id}/`));
 
-        function handleImageError(img) {
+        function tryReload(img) {
             img.onerror = null; // 防止进入无限循环
 
             const oldTitle = img.title;
             const oldCursor = img.style.cursor;
-            img.style.cursor = 'pointer';
-            img.title = '点击重载';
 
             let isReloading = false;
             const reload = function () {
@@ -58,10 +56,18 @@
                 }, 1000);
             };
 
-            img.addEventListener('click', reload);
+            img.onerror = function () {
+                img.onerror = null; // 防止进入无限循环
+                img.style.cursor = 'pointer';
+                img.title = '点击重载';
+                img.addEventListener('click', reload);
+            }
+
             img.addEventListener('load', function () {
                 img.removeEventListener('click', reload);
             });
+
+            reload();
         }
         const renderer = {
             heading({ tokens, depth }) {
@@ -75,7 +81,7 @@
                 return `<h${depth}>${text}</h${depth}>`;
             },
             image({ href, text }) {
-                return `<img src="${href}" alt="${text}" title="${text}" loading="lazy" onerror="handleImageError(this)">`;
+                return `<img src="${href}" alt="${text}" title="${text}" loading="lazy" onerror="tryReload(this)">`;
             }
         };
         marked.use({ renderer });
