@@ -2,8 +2,11 @@ package mgr
 
 import (
 	"bufio"
+	"crypto/sha1"
 	"fmt"
+	"mime"
 	"os"
+	"path/filepath"
 	"time"
 )
 
@@ -77,4 +80,23 @@ func ReadLine(filePath string, fx func(string, int) bool) error {
 		}
 		return nil
 	})
+}
+
+func ShortSha1(text string) string {
+	hash := sha1.Sum([]byte(text))
+	ret := ""
+	for i := 0; i < len(hash); i++ {
+		if i%5 == 0 {
+			ret += fmt.Sprintf("%02x", hash[i])
+		}
+	}
+	return ret
+}
+
+func ContentType(name string) string {
+	ct := mime.TypeByExtension(filepath.Ext(name))
+	if ct == "" {
+		ct = "application/octet-stream"
+	}
+	return ct
 }

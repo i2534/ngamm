@@ -17,77 +17,12 @@
     <div>由 <a href="https://github.com/i2534/ngamm" target="_blank">NGAMM</a> 提供支持</div>
     <script src="https://cdn.jsdelivr.net/npm/marked"></script>
     <script src="https://cdn.jsdelivr.net/npm/marked-base-url"></script>
+    <script src="/asset/view.js"></script>
     <script>
         const id = '{{.ID}}';
         const token = '{{.Token}}';
-        const baseUrl = window.location.origin;
         const ngaPostBase = '{{.BaseUrl}}/read.php?tid=';
-        marked.use(markedBaseUrl.baseUrl(`${baseUrl}/view/${token}/${id}/`));
-
-        function tryReload(img) {
-            img.onerror = null; // 防止进入无限循环
-
-            const oldTitle = img.title;
-            const oldCursor = img.style.cursor;
-
-            let isReloading = false;
-            const reload = function () {
-                if (isReloading) {
-                    return;
-                }
-                isReloading = true;
-
-                let src = img.src;
-                const i = src.indexOf('?t=');
-                if (i !== -1) {
-                    src = src.substring(0, i);
-                }
-                if (src.startsWith(baseUrl)) {
-                    img.src = src + '?t=' + new Date().getTime(); // 添加时间戳以强制重新加载
-                } else if (src.indexOf('.nga.') != -1 && src.indexOf('/smile/') != -1) {// NGA 服务器拒绝跨域访问, 那就让服务器做代理
-                    const name = src.substring(src.lastIndexOf('/') + 1);
-                    img.src = `${baseUrl}/view/${token}/smile/${name}`;
-                }
-                img.style.cursor = oldCursor;
-                img.title = oldTitle;
-
-                setTimeout(() => {
-                    isReloading = false;
-                }, 1000);
-            };
-
-            img.onerror = function () {
-                img.onerror = null; // 防止进入无限循环
-                img.style.cursor = 'pointer';
-                img.title = '点击重载';
-                img.addEventListener('click', reload);
-            }
-
-            img.addEventListener('load', function () {
-                img.removeEventListener('click', reload);
-            });
-
-            reload();
-        }
-        const renderer = {
-            heading({ tokens, depth }) {
-                const text = this.parser.parseInline(tokens);
-                if (depth === 3) {
-                    return `<h${depth}><a href="${ngaPostBase}${id}" target="_blank">${text}</a></h${depth}>`;
-                }
-                if (depth === 5) {
-                    return `<h${depth}>${text.replaceAll(/&lt;.+?&gt;/g, '')}</h${depth}>`;
-                }
-                return `<h${depth}>${text}</h${depth}>`;
-            },
-            image({ href, text }) {
-                return `<img src="${href}" alt="${text}" title="${text}" loading="lazy" onerror="tryReload(this)">`;
-            }
-        };
-        marked.use({ renderer });
-
-        const content = document.querySelector('#content');
-        content.innerHTML = marked.parse(content.innerHTML);
+        render(ngaPostBase, id, token);
     </script>
 </body>
 

@@ -3,9 +3,10 @@ package mgr
 import (
 	"embed"
 	"html/template"
+	"io"
 	"log"
-	"mime"
 	"net/http"
+	"net/url"
 	"os"
 	"path/filepath"
 	"strconv"
@@ -21,6 +22,7 @@ const (
 	ERR_KEY     = "error"
 	HTML_HEADER = "text/html; charset=utf-8"
 	SMILE_DIR   = "smile"
+	ATTACH_DIR  = "attachments"
 )
 
 func (srv *Server) regHandlers() {
@@ -295,78 +297,159 @@ func (srv *Server) viewTopicRes() func(c *gin.Context) {
 			return
 		}
 
+		if tid == "smile" { // 处理使用默认表情设置的情况
+			srv.replaySmile(c, name)
+			return
+		}
+
 		cache := srv.cache
-		// 处理使用默认表情设置的情况
-		if tid == "smile" {
-			if cache.smile == nil {
-				cache.lock.Lock()
-				defer cache.lock.Unlock()
+		id, e := strconv.Atoi(tid)
+		if e != nil {
+			c.String(http.StatusBadRequest, "Invalid topic ID")
+			return
+		}
 
-				data, e := efs.ReadFile("assets/smiles.json")
-				if e != nil {
-					c.String(http.StatusInternalServerError, "Failed to load embed smiles.json")
-					return
-				}
-				if smile, e := Unmarshal(data); e != nil {
-					c.String(http.StatusInternalServerError, "Failed to parse embed smiles.json")
-					return
-				} else {
-					smile.root = filepath.Clean(filepath.Join(cache.topicRoot, SMILE_DIR))
-					cache.smile = smile
-				}
-			}
+		cache.lock.RLock()
+		defer cache.lock.RUnlock()
 
-			if srv.Cfg.Smile == "web" {
-				url := cache.smile.URL(name)
-				if url == "" {
-					log.Printf("Smile %s not found\n", name)
-					c.String(http.StatusNotFound, "Smile "+name+" not found")
-				} else {
-					c.Redirect(http.StatusMovedPermanently, url)
-				}
-			} else {
-				path := cache.smile.Local(name, srv.nga.GetUA())
-				if path == "" {
-					log.Printf("Smile %s not found\n", name)
-					c.String(http.StatusNotFound, "Smile "+name+" not found")
-				} else {
-					data, e := os.ReadFile(path)
-					if e != nil {
-						c.String(http.StatusInternalServerError, "Failed to read smile")
-						return
-					}
-					c.Data(http.StatusOK, "application/octet-stream", data)
-				}
-			}
+		topic, has := cache.topics[id]
+		if !has {
+			c.String(http.StatusNotFound, "Topic not found")
+			return
+		}
+
+		if strings.HasPrefix(name, "at_") { // load attachment failed from NGA
+			srv.replayAttachment(c, name[3:], topic)
+			return
+		}
+
+		// 确保文件路径在 root 目录下, 防止路径穿越
+		file := filepath.Join(topic.root, filepath.Clean(name))
+		if !strings.HasPrefix(file, topic.root) {
+			c.String(http.StatusBadRequest, "Illegal file name")
+			return
+		}
+
+		data, e := os.ReadFile(file)
+		if e != nil {
+			c.String(http.StatusInternalServerError, "Failed to read asset")
+			return
+		}
+		c.Data(http.StatusOK, ContentType(name), data)
+	}
+}
+
+func (srv *Server) replayAttachment(c *gin.Context, name string, topic *Topic) {
+	i := strings.IndexByte(name, '_')
+	if i < 0 {
+		c.String(http.StatusBadRequest, "Invalid attachment name, missing floor")
+		return
+	}
+	src, e := url.QueryUnescape(name[i+1:])
+	if e != nil {
+		c.String(http.StatusBadRequest, "Invalid attachment name, failed to unescape")
+		return
+	}
+	ext := filepath.Ext(src)
+	dir := filepath.Join(topic.root, ATTACH_DIR)
+	os.MkdirAll(dir, os.ModePerm)
+	fn := name[:i] + "_" + ShortSha1(src) + ext
+	file := filepath.Join(dir, fn)
+	if IsExist(file) {
+		f, e := os.Open(file)
+		if e != nil {
+			c.String(http.StatusInternalServerError, "Failed to open attachment file")
+			return
+		}
+		defer f.Close()
+
+		log.Println("Hit attachment", fn)
+
+		c.Header("Content-Type", ContentType(fn))
+		if _, e := io.Copy(c.Writer, f); e != nil {
+			c.String(http.StatusInternalServerError, "Failed to copy attachment content")
+		}
+		return
+	}
+
+	if strings.Contains(src, ".nga.178.com/attachments/") {
+		req, e := http.NewRequest(http.MethodGet, src, nil)
+		if e != nil {
+			c.String(http.StatusInternalServerError, "Invalid attachment name, failed to create request")
+			return
+		}
+		req.Header.Set("User-Agent", srv.nga.GetUA())
+
+		resp, e := srv.hc.Do(req)
+		if e != nil {
+			c.String(http.StatusInternalServerError, "Failed to fetch attachment")
+			return
+		}
+		defer resp.Body.Close()
+
+		if resp.StatusCode != http.StatusOK {
+			c.String(http.StatusInternalServerError, "Failed to fetch attachment, status code "+strconv.Itoa(resp.StatusCode))
+			return
+		}
+
+		f, e := os.Create(file)
+		if e != nil {
+			c.String(http.StatusInternalServerError, "Failed to open attachment file")
+			return
+		}
+		defer f.Close()
+
+		c.Header("Content-Type", resp.Header.Get("Content-Type"))
+		c.Header("Content-Length", resp.Header.Get("Content-Length"))
+		iw := io.MultiWriter(c.Writer, f)
+		if _, e := io.Copy(iw, resp.Body); e != nil {
+			c.String(http.StatusInternalServerError, "Failed to copy attachment content")
+		}
+	} else {
+		c.String(http.StatusBadRequest, "Invalid attachment name, it's not NGA's attachment")
+	}
+}
+
+func (srv *Server) replaySmile(c *gin.Context, name string) {
+	cache := srv.cache
+	if cache.smile == nil {
+		cache.lock.Lock()
+		defer cache.lock.Unlock()
+
+		data, e := efs.ReadFile("assets/smiles.json")
+		if e != nil {
+			c.String(http.StatusInternalServerError, "Failed to load embed smiles.json")
+			return
+		}
+		if smile, e := Unmarshal(data); e != nil {
+			c.String(http.StatusInternalServerError, "Failed to parse embed smiles.json")
+			return
 		} else {
-			id, e := strconv.Atoi(tid)
+			smile.root = filepath.Clean(filepath.Join(cache.topicRoot, SMILE_DIR))
+			cache.smile = smile
+		}
+	}
+
+	if srv.Cfg.Smile == "web" {
+		url := cache.smile.URL(name)
+		if url == "" {
+			log.Printf("Smile %s not found\n", name)
+			c.String(http.StatusNotFound, "Smile "+name+" not found")
+		} else {
+			c.Redirect(http.StatusMovedPermanently, url)
+		}
+	} else {
+		path := cache.smile.Local(name, srv.nga.GetUA())
+		if path == "" {
+			log.Printf("Smile %s not found\n", name)
+			c.String(http.StatusNotFound, "Smile "+name+" not found")
+		} else {
+			data, e := os.ReadFile(path)
 			if e != nil {
-				c.String(http.StatusBadRequest, "Invalid topic ID")
+				c.String(http.StatusInternalServerError, "Failed to read smile")
 				return
 			}
-
-			cache.lock.RLock()
-			defer cache.lock.RUnlock()
-
-			topic, has := cache.topics[id]
-			if !has {
-				c.String(http.StatusNotFound, "Topic not found")
-				return
-			}
-
-			// 确保文件路径在 root 目录下, 防止路径穿越
-			file := filepath.Join(topic.root, filepath.Clean(name))
-			if !strings.HasPrefix(file, topic.root) {
-				c.String(http.StatusBadRequest, "Illegal file name")
-				return
-			}
-
-			data, e := os.ReadFile(file)
-			if e != nil {
-				c.String(http.StatusInternalServerError, "Failed to read asset")
-				return
-			}
-			c.Data(http.StatusOK, "application/octet-stream", data)
+			c.Data(http.StatusOK, ContentType(path), data)
 		}
 	}
 }
@@ -469,10 +552,6 @@ func (srv *Server) asset() func(c *gin.Context) {
 			c.String(http.StatusInternalServerError, "Failed to read asset "+name)
 			return
 		}
-		ct := mime.TypeByExtension(filepath.Ext(name))
-		if ct == "" {
-			ct = "application/octet-stream"
-		}
-		c.Data(http.StatusOK, ct, data)
+		c.Data(http.StatusOK, ContentType(name), data)
 	}
 }

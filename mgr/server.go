@@ -2,7 +2,6 @@ package mgr
 
 import (
 	"context"
-	"crypto/sha1"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -119,6 +118,7 @@ type Server struct {
 	cache    *cache
 	cron     *cron.Cron
 	sse      *SSE
+	hc       *http.Client
 }
 
 func customLogFormatter(param gin.LogFormatterParams) string {
@@ -180,18 +180,16 @@ func NewServer(cfg *Config, nga *Client) (*Server, error) {
 		sse: &SSE{
 			clients: &sync.Map{},
 		},
+		hc: &http.Client{
+			Timeout: 10 * time.Second,
+		},
 	}
 
 	if e := srv.init(engine); e != nil {
 		return nil, e
 	}
 	if cfg.Token != "" {
-		hash := sha1.Sum([]byte(cfg.Token))
-		for i := 0; i < len(hash); i++ {
-			if i%5 == 0 {
-				cfg.tokenHash += fmt.Sprintf("%02x", hash[i])
-			}
-		}
+		cfg.tokenHash = ShortSha1(cfg.Token)
 	}
 	return srv, nil
 }

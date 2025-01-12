@@ -10,6 +10,7 @@ import (
 	"path/filepath"
 	"strings"
 	"sync"
+	"time"
 )
 
 type item struct {
@@ -24,12 +25,16 @@ type Smile struct {
 	root   string
 	cache  sync.Map
 	failed sync.Map
+	client *http.Client
 }
 
 func Unmarshal(data []byte) (*Smile, error) {
 	smile := &Smile{}
 	if e := json.Unmarshal(data, smile); e != nil {
 		return nil, e
+	}
+	smile.client = &http.Client{
+		Timeout: 10 * time.Second,
 	}
 	return smile, nil
 }
@@ -109,8 +114,7 @@ func (s *Smile) fetch(path, url, ua string) error {
 	}
 	req.Header.Set("User-Agent", ua)
 
-	client := http.Client{}
-	resp, e := client.Do(req)
+	resp, e := s.client.Do(req)
 	if e != nil {
 		return fmt.Errorf("failed to download smile %s: %w", url, e)
 	}
