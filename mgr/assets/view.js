@@ -48,6 +48,8 @@ function render(ngaPostBase, id, token) {
 
         reload();
     }
+    window.tryReloadImage = tryReload;
+
     const renderer = {
         heading({ tokens, depth }) {
             const text = this.parser.parseInline(tokens);
@@ -66,7 +68,7 @@ function render(ngaPostBase, id, token) {
             return `<h${depth}>${text}</h${depth}>`;
         },
         image({ href, text }) {
-            return `<img src="${href}" alt="${text}" title="${text}" loading="lazy" onerror="tryReload(this)">`;
+            return `<img src="${href}" alt="${text}" title="${text}" loading="lazy" onerror="tryReloadImage(this)">`;
         }
     };
     marked.use({ renderer });

@@ -319,6 +319,7 @@ func (srv *Server) viewTopicRes() func(c *gin.Context) {
 		}
 
 		if strings.HasPrefix(name, "at_") { // load attachment failed from NGA
+			log.Println("It's attachment", name)
 			srv.replayAttachment(c, name[3:], topic)
 			return
 		}
@@ -350,6 +351,7 @@ func (srv *Server) replayAttachment(c *gin.Context, name string, topic *Topic) {
 		c.String(http.StatusBadRequest, "Invalid attachment name, failed to unescape")
 		return
 	}
+	log.Println("Attachment source", src)
 	ext := filepath.Ext(src)
 	dir := filepath.Join(topic.root, ATTACH_DIR)
 	os.MkdirAll(dir, os.ModePerm)
@@ -363,7 +365,7 @@ func (srv *Server) replayAttachment(c *gin.Context, name string, topic *Topic) {
 		}
 		defer f.Close()
 
-		log.Println("Hit attachment", fn)
+		log.Println("Hit attachment cache", fn)
 
 		c.Header("Content-Type", ContentType(fn))
 		if _, e := io.Copy(c.Writer, f); e != nil {
@@ -373,6 +375,7 @@ func (srv *Server) replayAttachment(c *gin.Context, name string, topic *Topic) {
 	}
 
 	if strings.Contains(src, ".nga.178.com/attachments/") {
+		log.Println("Fetch attachment", src)
 		req, e := http.NewRequest(http.MethodGet, src, nil)
 		if e != nil {
 			c.String(http.StatusInternalServerError, "Invalid attachment name, failed to create request")
