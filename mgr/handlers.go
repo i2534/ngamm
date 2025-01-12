@@ -346,7 +346,8 @@ func (srv *Server) replayAttachment(c *gin.Context, name string, topic *Topic) {
 		c.String(http.StatusBadRequest, "Invalid attachment name, missing floor")
 		return
 	}
-	src, e := url.QueryUnescape(name[i+1:])
+
+	src, e := url.QueryUnescape(strings.ReplaceAll(name[i+1:], "_2F", "%2F"))
 	if e != nil {
 		c.String(http.StatusBadRequest, "Invalid attachment name, failed to unescape")
 		return

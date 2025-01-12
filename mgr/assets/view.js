@@ -91,6 +91,9 @@ function render(ngaPostBase, id, token) {
             }
             return null;
         }
+        function escape(src) {// 转义, 不用 %2F 是因为使用代理服务器时会被解析为 / 导致 404
+            return encodeURIComponent(src).replaceAll('%2F', '_2F');
+        }
         vs.forEach(v => {
             v.onplay = null;
             v.onplaying = null;
@@ -107,7 +110,7 @@ function render(ngaPostBase, id, token) {
             v.onerror = function () {
                 v.onerror = null;
                 const floor = findFloor(v);
-                v.src = `${baseUrl}at_${floor}_${encodeURIComponent(v.src)}`;
+                v.src = `${baseUrl}at_${floor}_${escape(v.src)}`;
             };
         });
     }
