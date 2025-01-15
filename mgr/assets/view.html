@@ -9,12 +9,16 @@
         body {
             background-color: #f5e8cb;
         }
-    </style>
-</head>
 
-<body>
-    <div id="content">{{.Markdown}}</div>
-    <div>由 <a href="https://github.com/i2534/ngamm" target="_blank">NGAMM</a> 提供支持</div>
+        img,
+        video {
+            max-width: 100%;
+        }
+
+        .hidden {
+            display: none;
+        }
+    </style>
     <script src="https://cdn.jsdelivr.net/npm/marked"></script>
     <script src="https://cdn.jsdelivr.net/npm/marked-base-url"></script>
     <script src="/asset/view.js"></script>
@@ -24,6 +28,11 @@
         const ngaPostBase = '{{.BaseUrl}}/read.php?tid=';
         render(ngaPostBase, id, token);
     </script>
+</head>
+
+<body>
+    <div id="content" class="hidden">{{.Markdown}}</div>
+    <div>由 <a href="https://github.com/i2534/ngamm" target="_blank">NGAMM</a> 提供支持</div>
 </body>
 
 </html>

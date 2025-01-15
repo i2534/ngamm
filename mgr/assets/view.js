@@ -3,7 +3,55 @@ function render(ngaPostBase, id, token) {
     const baseUrl = `${origin}/view/${token}/${id}/`;
     marked.use(markedBaseUrl.baseUrl(baseUrl));
 
-    function tryReload(img) {
+    const attrSrc = '_src', attrPoster = '_poster';
+
+    const renderer = {
+        heading({ tokens, depth }) {
+            const text = this.parser.parseInline(tokens);
+            if (depth === 3) {
+                return `<h${depth}><a href="${ngaPostBase}${id}" target="_blank">${text}</a></h${depth}>`;
+            }
+            if (depth === 5) {// 楼层
+                let floor = text.match(/(\d+)\.\[\d+\]/);
+                if (floor) {
+                    floor = floor[1];
+                } else {
+                    floor = '';
+                }
+                return `<h${depth} floor=${floor}>${text.replaceAll(/&lt;.+?&gt;/g, '')}</h${depth}>`;
+            }
+            return `<h${depth}>${text}</h${depth}>`;
+        },
+        image({ href, text }) {
+            return `<img ${attrSrc}="${href}" alt="${text}" title="${text}" onerror="tryReloadImage(this)">`;
+        }
+    };
+
+    const extensions = [{
+        name: 'video',
+        level: 'inline',
+        start(src) {
+            return src.indexOf('<video');
+        },
+        tokenizer(src) {
+            const match = src.match(/^.*<video[^>]*src="([^"]+)"[^>]*poster="([^"]+)"[^>]*>.*<\/video>.*$/);
+            if (match) {
+                return {
+                    type: 'video',
+                    raw: match[0],
+                    src: match[1],
+                    poster: match[2],
+                };
+            }
+            return false;
+        },
+        renderer({ src, poster }) {
+            return `<video ${attrSrc}="${src}" ${attrPoster}="${poster}" controls onerror="tryReloadVideo(this)"></video>`;
+        }
+    }];
+    marked.use({ renderer, extensions });
+
+    function tryReloadImage(img) {
         img.onerror = null; // 防止进入无限循环
 
         const oldTitle = img.title;
@@ -48,70 +96,52 @@ function render(ngaPostBase, id, token) {
 
         reload();
     }
-    window.tryReloadImage = tryReload;
 
-    const renderer = {
-        heading({ tokens, depth }) {
-            const text = this.parser.parseInline(tokens);
-            if (depth === 3) {
-                return `<h${depth}><a href="${ngaPostBase}${id}" target="_blank">${text}</a></h${depth}>`;
-            }
-            if (depth === 5) {// 楼层
-                let floor = text.match(/(\d+)\.\[\d+\]/);
-                if (floor) {
-                    floor = floor[1];
-                } else {
-                    floor = '';
+    function findFloor(e) {
+        while (e) {
+            let prev = e.previousElementSibling;
+            while (prev) {
+                if (prev.tagName.toLowerCase() === 'h5') {
+                    return prev.getAttribute('floor');
                 }
-                return `<h${depth} floor=${floor}>${text.replaceAll(/&lt;.+?&gt;/g, '')}</h${depth}>`;
+                prev = prev.previousElementSibling;
             }
-            return `<h${depth}>${text}</h${depth}>`;
-        },
-        image({ href, text }) {
-            return `<img src="${href}" alt="${text}" title="${text}" loading="lazy" onerror="tryReloadImage(this)">`;
+            e = e.parentElement;
         }
-    };
-    marked.use({ renderer });
+        return null;
+    }
+    function escape(src) {// 转义, 不用 %2F 是因为使用代理服务器时会被提前解码为 / 导致 404
+        return encodeURIComponent(src).replaceAll('%2F', '_2F');
+    }
+    function tryReloadVideo(video) {
+        video.onerror = null; // 防止进入无限循环
 
-    const content = document.querySelector('#content');
-    content.innerHTML = marked.parse(content.innerHTML);
+        const floor = findFloor(video);
+        video.poster = `${baseUrl}at_${floor}_${escape(video.poster)}`;
+        video.src = `${baseUrl}at_${floor}_${escape(video.src)}`;
+    }
 
-    const vs = content.querySelectorAll('video');
-    if (vs && vs.length > 0) {
-        function findFloor(e) {
-            while (e) {
-                let prev = e.previousElementSibling;
-                while (prev) {
-                    if (prev.tagName.toLowerCase() === 'h5') {
-                        return prev.getAttribute('floor');
-                    }
-                    prev = prev.previousElementSibling;
-                }
-                e = e.parentElement;
-            }
-            return null;
-        }
-        function escape(src) {// 转义, 不用 %2F 是因为使用代理服务器时会被解析为 / 导致 404
-            return encodeURIComponent(src).replaceAll('%2F', '_2F');
-        }
-        vs.forEach(v => {
-            v.onplay = null;
-            v.onplaying = null;
-            v.controls = true;
-            v.style.cursor = 'pointer';
-            v.title = '点击播放';
-            v.addEventListener('click', function () {
-                if (v.paused) {
-                    v.play();
-                } else {
-                    v.pause();
+    window.tryReloadImage = tryReloadImage;
+    window.tryReloadVideo = tryReloadVideo;
+    window.addEventListener('load', () => {
+        const content = document.querySelector('#content');
+        content.innerHTML = marked.parse(content.innerHTML);
+
+        const observer = new IntersectionObserver((entries, observer) => {
+            entries.forEach(entry => {
+                if (entry.isIntersecting) {
+                    const tar = entry.target;
+                    [attrSrc, attrPoster].forEach(n => {
+                        if (tar.hasAttribute(n)) {
+                            tar.setAttribute(n.substring(1), tar.getAttribute(n));
+                            tar.removeAttribute(n);
+                        }
+                    });
+                    observer.unobserve(tar);
                 }
             });
-            v.onerror = function () {
-                v.onerror = null;
-                const floor = findFloor(v);
-                v.src = `${baseUrl}at_${floor}_${escape(v.src)}`;
-            };
         });
-    }
+        content.querySelectorAll('img, video').forEach(e => observer.observe(e));
+        content.classList.remove('hidden');
+    });
 }
