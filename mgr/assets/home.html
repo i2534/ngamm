@@ -31,9 +31,9 @@
             <h2>任务计划更新帖子设置</h2>
             <input type="hidden" id="TopicID">
             <p>计划公式(cron), 为空则代表不自动更新, <a href="https://godoc.org/github.com/robfig/cron" target="_blank">公式说明</a></p>
-            <input type="text" id="UpdateCron">
+            <input type="text" id="UpdateCron" aria-label="UpdateCron">
             <p>自动更新失败后最大重试次数, 小于等于 0 则代表一直重试</p>
-            <input type="number" id="MaxRetryCount">
+            <input type="number" id="MaxRetryCount" aria-label="MaxRetryCount">
             <button onclick="submitSched()">确认</button>
             <button onclick="closeDialog()">取消</button>
         </div>

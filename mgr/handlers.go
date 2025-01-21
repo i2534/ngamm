@@ -30,12 +30,20 @@ func (srv *Server) regHandlers() {
 
 	r := srv.Raw.Handler.(*gin.Engine)
 	r.Use(gzip.Gzip(gzip.DefaultCompression))
+	r.Use(func(c *gin.Context) {
+		c.Header("Cache-Control", "max-age=604800")
+		c.Next()
+	})
 
 	tg := r.Group("/topic")
 	{
 		if has {
 			tg.Use(srv.topicMiddleware())
 		}
+		tg.Use(func(c *gin.Context) {
+			c.Header("Cache-Control", "no-cache")
+			c.Next()
+		})
 		tg.GET("", srv.topicList())
 		tg.GET("/", srv.topicList())
 		tg.GET("/:id", srv.topicInfo())
