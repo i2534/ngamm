@@ -1,0 +1,16 @@
+body {
+    background-color: #f5e8cb;
+}
+
+img,
+video {
+    max-width: 100%;
+}
+
+a {
+    text-decoration: none;
+}
+
+.hidden {
+    display: none;
+}

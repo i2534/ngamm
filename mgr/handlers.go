@@ -94,6 +94,21 @@ func (srv *Server) topicList() func(c *gin.Context) {
 		defer cache.lock.RUnlock()
 
 		topics := make([]Topic, 0, len(cache.topics))
+
+		ims := c.GetHeader("If-Modified-Since")
+		if ims != "" {
+			if t, e := time.Parse(time.RFC1123, ims); e == nil {
+				for _, topic := range cache.topics {
+					if topic.loadAt.After(t) {
+						topics = append(topics, *topic)
+					}
+				}
+
+				c.JSON(http.StatusOK, topics)
+				return
+			}
+		}
+
 		for _, topic := range cache.topics {
 			topics = append(topics, *topic)
 		}

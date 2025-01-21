@@ -2,7 +2,9 @@ function init(hasToken, ngaPostBase) {
     const origin = window.location.origin;
     const headers = {};
     const sorts = { key: 'Id', order: 'asc' };
+    const pageSize = 15;
     let topics = [];
+    let currentPage = 1;
 
     function dealTopic(id, callback) {
         if (!id || !topics || topics.length === 0) {
@@ -43,7 +45,14 @@ function init(hasToken, ngaPostBase) {
     }
 
     async function fetchTopics(id) {
-        const response = await fetch(`${origin}/topic${id ? ('/' + id) : ''}`, { headers });
+        const hs = { ...headers };
+        const inc = !id && topics && topics.length > 0;
+        if (inc) {
+            hs['If-Modified-Since'] = new Date().toUTCString();
+        }
+        const response = await fetch(`${origin}/topic${id ? ('/' + id) : ''}`
+            , { headers: hs }
+        );
         if (response.status === 401) {
             showTokenSection();
             throw new Error('需要设置 Token');
@@ -51,25 +60,45 @@ function init(hasToken, ngaPostBase) {
         if (!response.ok) {
             throw new Error('Failed to fetch topics');
         }
-        return response.json();
+        const ret = await response.json();
+        if (!inc) {
+            return ret;
+        }
+
+        const cache = new Map(ret.map(t => [t.Id, t]));
+        const ts = [...topics];
+        ts.forEach(t => {
+            const ct = cache.get(t.Id);
+            if (ct) {
+                Object.assign(t, ct);
+                cache.delete(t.Id);
+            }
+        });
+        ts.push(...cache.values());
+        return ts;
     }
 
     function renderTopics() {
+        const start = (currentPage - 1) * pageSize;
+        const paginated = topics.slice(start, start + pageSize);
+
         const headers = `
         <tr>
-            <th onclick="sortTopics('Id')">ID</th>
-            <th onclick="sortTopics('Title')">标题</th>
-            <th onclick="sortTopics('Author')">楼主</th>
-            <th onclick="sortTopics('Result.Time')">最后更新于</th>
+            <th key="Id" onclick="sortTopics('Id')">ID</th>
+            <th key="Title" onclick="sortTopics('Title')">标题</th>
+            <th key="Author" onclick="sortTopics('Author')">楼主</th>
+            <th key="MaxFloor" onclick="sortTopics('MaxFloor')">楼层数</th>
+            <th key="Result.Time" onclick="sortTopics('Result.Time')">最后更新于</th>
             <th>更新计划</th>
             <th>操作</th>
         </tr>`;
 
-        const rows = topics.map(topic => `
+        const rows = paginated.map(topic => `
         <tr>
             <td><a href="${ngaPostBase}${topic.Id}" target="_blank">${topic.Id}</a></td>
             <td>${topic.Title}</td>
             <td>${topic.Author}</td>
+            <td>${topic.MaxFloor}</td>
             <td><span class="update-${topic.Result.Success ? 'success' : 'failed'}">${topic.Result.Time}</span></td>
             <td>${topic.Metadata.UpdateCron}</td>
             <td>
@@ -81,7 +110,66 @@ function init(hasToken, ngaPostBase) {
         </tr>`).join('');
 
         const table = `<table>${headers}${rows}</table>`;
-        document.getElementById('topics').innerHTML = table;
+        const container = document.getElementById('topics');
+        container.innerHTML = table;
+
+        const th = container.querySelector(`th[key="${sorts.key}"]`);
+        if (th) {
+            th.classList.add(sorts.order === 'asc' ? 'sorted-asc' : 'sorted-desc');
+        }
+
+        renderPagination();
+    }
+
+    function renderPagination() {
+        const totalPages = Math.ceil(topics.length / pageSize);
+        const pagination = document.getElementById('pagination');
+        pagination.innerHTML = '';
+
+        const firstButton = document.createElement('button');
+        firstButton.innerText = '|<';
+        firstButton.onclick = () => {
+            currentPage = 1;
+            renderTopics();
+        }
+        pagination.appendChild(firstButton);
+
+        const prevButton = document.createElement('button');
+        prevButton.innerText = '<';
+        prevButton.onclick = () => {
+            currentPage = Math.max(1, currentPage - 1);
+            renderTopics();
+        }
+        pagination.appendChild(prevButton);
+
+        const nextButton = document.createElement('button');
+        nextButton.innerText = '>';
+        nextButton.onclick = () => {
+            currentPage = Math.min(totalPages, currentPage + 1);
+            renderTopics();
+        }
+        pagination.appendChild(nextButton);
+
+        const lastButton = document.createElement('button');
+        lastButton.innerText = '>|';
+        lastButton.onclick = () => {
+            currentPage = totalPages;
+            renderTopics();
+        }
+        pagination.appendChild(lastButton);
+
+        for (let i = 1; i <= totalPages; i++) {
+            const pb = document.createElement('button');
+            pb.innerText = i;
+            pb.onclick = () => {
+                currentPage = i;
+                renderTopics();
+            };
+            if (i === currentPage) {
+                pb.classList.add('active');
+            }
+            pagination.appendChild(pb);
+        }
     }
 
     function sortTopics(key) {
@@ -102,6 +190,7 @@ function init(hasToken, ngaPostBase) {
             if (av > bv) return sorts.order === 'asc' ? 1 : -1;
             return 0;
         });
+
         renderTopics();
     }
 

@@ -142,3 +142,30 @@ dialog::backdrop {
 .dialog-content button:last-of-type:hover {
     background-color: #e53935;
 }
+
+.sorted-asc::after {
+    content: ' ▲';
+    color: #4CAF50;
+}
+
+.sorted-desc::after {
+    content: ' ▼';
+    color: #f4e136;
+}
+
+#pagination button {
+    background-color: #e0e0e0;
+    color: #333;
+    margin: 0 2px;
+    padding: 5px 10px;
+    border-radius: 3px;
+}
+
+#pagination button:hover {
+    background-color: #d0d0d0;
+}
+
+#pagination button.active {
+    background-color: #4CAF50;
+    color: white;
+}

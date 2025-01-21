@@ -52,6 +52,7 @@ type DownResult struct {
 
 type Topic struct {
 	root     string
+	loadAt   CustomTime
 	Id       int
 	Title    string
 	Author   string
@@ -122,6 +123,8 @@ func LoadTopic(root string, id int) (*Topic, error) {
 		log.Println("Failed to parse metadata:", e)
 	}
 	topic.Metadata = md
+
+	topic.loadAt = Now()
 
 	return topic, nil
 }
