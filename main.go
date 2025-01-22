@@ -37,8 +37,7 @@ func main() {
 	var opts Option
 	parser := flags.NewParser(&opts, flags.Default)
 	_, e := parser.Parse()
-	if e != nil {
-		// 如果解析失败，打印帮助信息
+	if e != nil { // 如果解析失败，打印帮助信息
 		if fe, ok := e.(*flags.Error); ok && fe.Type == flags.ErrHelp {
 			os.Exit(0)
 		} else {
@@ -73,10 +72,14 @@ func main() {
 	if token != "" {
 		log.Printf("设置访问令牌: %s\n", token)
 	}
+	if gitHash == "" {
+		gitHash = "what"
+	}
 	srv, e := mgr.NewServer(&mgr.Config{
-		Addr:  addr,
-		Token: token,
-		Smile: opts.Smile,
+		Addr:    addr,
+		Token:   token,
+		Smile:   opts.Smile,
+		GitHash: gitHash,
 	}, client)
 	if e != nil {
 		log.Fatalln("初始化服务器出现问题:", e.Error())

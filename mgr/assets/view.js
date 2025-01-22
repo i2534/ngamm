@@ -22,8 +22,11 @@ function render(ngaPostBase, id, token) {
             }
             return `<h${depth}>${text}</h${depth}>`;
         },
-        image({ href, text }) {
-            return `<img ${attrSrc}="${href}" alt="${text}" title="${text}" onerror="tryReloadImage(this)">`;
+        image({ href, text, title }) {
+            return `<img ${attrSrc}="${href}" alt="${text}" title="${title || text}" onerror="tryReloadImage(this)">`;
+        },
+        link({ href, text, title }) {
+            return `<a href="${href}" title="${title || text}" target="_blank">${text === 'url' ? href : text}</a>`;
         }
     };
 

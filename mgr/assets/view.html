@@ -7,8 +7,8 @@
     <title>{{.Title}}</title>
     <script src="https://cdn.jsdelivr.net/npm/marked"></script>
     <script src="https://cdn.jsdelivr.net/npm/marked-base-url"></script>
-    <link rel="stylesheet" href="/asset/view.css">
-    <script src="/asset/view.js"></script>
+    <link rel="stylesheet" href="/asset/view.css?v={{.Version}}">
+    <script src="/asset/view.js?v={{.Version}}"></script>
     <script>
         const id = '{{.ID}}';
         const token = '{{.Token}}';

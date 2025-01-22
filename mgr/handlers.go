@@ -487,6 +487,7 @@ type viewTplData struct {
 	Token    string
 	BaseUrl  string
 	Markdown template.HTML
+	Version  string
 }
 
 func (srv *Server) viewTopic() func(c *gin.Context) {
@@ -531,6 +532,7 @@ func (srv *Server) viewTopic() func(c *gin.Context) {
 			Token:    token,
 			BaseUrl:  srv.nga.BaseURL(),
 			Markdown: template.HTML(markdown),
+			Version:  srv.Cfg.GitHash,
 		}
 		c.Header("Content-Type", HTML_HEADER)
 		if e := tmpl.Execute(c.Writer, data); e != nil {
@@ -549,9 +551,11 @@ func (srv *Server) homePage() func(c *gin.Context) {
 		data := struct {
 			HasToken bool
 			BaseUrl  string
+			Version  string
 		}{
 			HasToken: srv.Cfg.Token != "",
 			BaseUrl:  srv.nga.BaseURL(),
+			Version:  srv.Cfg.GitHash,
 		}
 		c.Header("Content-Type", HTML_HEADER)
 		if e := tmpl.Execute(c.Writer, data); e != nil {

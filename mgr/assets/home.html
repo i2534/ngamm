@@ -5,8 +5,8 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>NGA 帖子管理</title>
-    <link rel="stylesheet" href="/asset/home.css">
-    <script src="/asset/home.js"></script>
+    <link rel="stylesheet" href="/asset/home.css?v={{.Version}}">
+    <script src="/asset/home.js?v={{.Version}}"></script>
     <script>
         const hasToken = '{{.HasToken}}'.toLowerCase() === 'true';
         const ngaPostBase = '{{.BaseUrl}}/read.php?tid=';

@@ -38,6 +38,7 @@ type Config struct {
 	Token     string
 	tokenHash string
 	Smile     string
+	GitHash   string
 }
 
 type cache struct {
