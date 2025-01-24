@@ -128,7 +128,9 @@ function render(ngaPostBase, id, token) {
     window.tryReloadVideo = tryReloadVideo;
     window.addEventListener('load', () => {
         const content = document.querySelector('#content');
-        content.innerHTML = marked.parse(content.innerHTML);
+        let html = content.innerHTML;
+        html = html.replaceAll(/\[quote\](.*?)\[\/quote\]/gs, `<div class="quote">$1</div>`);
+        content.innerHTML = marked.parse(html);
 
         const observer = new IntersectionObserver((entries, observer) => {
             entries.forEach(entry => {

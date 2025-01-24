@@ -164,8 +164,10 @@ func (srv *Server) topicAdd() func(c *gin.Context) {
 			// 刚创建的帖子, 先更新几次, 以便快速获取内容
 			intervals := []time.Duration{
 				5,
+				10,
 				15,
-				30,
+				25,
+				40,
 			}
 			for _, interval := range intervals {
 				timer := time.AfterFunc(interval*time.Minute, func() {

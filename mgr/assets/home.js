@@ -106,7 +106,7 @@ function init(hasToken, ngaPostBase) {
             <td><span class="update-${topic.Result.Success ? 'success' : 'failed'}">${topic.Result.Time}</span></td>
             <td>${topic.Metadata.UpdateCron}</td>
             <td>
-                <button onclick="viewTopic(${topic.Id})" title="查看帖子内容">查看</button>
+                <button onclick="viewTopic(${topic.Id}, ${topic.MaxFloor})" title="查看帖子内容">查看</button>
                 <button class="fresh-button" onclick="freshTopic(${topic.Id})" title="立即更新帖子">更新</button>
                 <button class="sched-button" onclick="schedTopic(${topic.Id})" title="任务计划更新帖子">计划</button>
                 <button class="delete-button" onclick="deleteTopic(${topic.Id})" title="删除帖子到回收站">删除</button>
@@ -301,7 +301,7 @@ function init(hasToken, ngaPostBase) {
         }
     }
 
-    function hashToken(token) {
+    async function hashToken(token) {
         if (crypto && crypto.subtle) {// 这坑爹的API, 只在 https 下才能用
             return crypto.subtle.digest('SHA-1', new TextEncoder().encode(token))
                 .then(hashBuffer => {
@@ -336,9 +336,9 @@ function init(hasToken, ngaPostBase) {
         }
     }
 
-    async function viewTopic(id) {
+    async function viewTopic(id, maxFloor) {
         const token = headers.Authorization ? await hashToken(headers.Authorization) : '-';
-        window.open(`${origin}/view/${token}/${id}`, '_blank');
+        window.open(`${origin}/view/${token}/${id}?${maxFloor}`, '_blank');
     }
 
     function closeDialog(dialogId) {
