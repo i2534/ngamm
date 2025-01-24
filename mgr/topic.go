@@ -52,7 +52,8 @@ type DownResult struct {
 
 type Topic struct {
 	root     string
-	loadAt   CustomTime
+	modAt    CustomTime
+	timers   *SyncMap[time.Duration, *time.Timer]
 	Id       int
 	Title    string
 	Author   string
@@ -63,14 +64,20 @@ type Topic struct {
 	Result   DownResult
 }
 
+func NewTopic(root string, id int) *Topic {
+	return &Topic{
+		root:     root,
+		timers:   NewSyncMap[time.Duration, *time.Timer](),
+		Id:       id,
+		Metadata: &Metadata{},
+	}
+}
+
 func LoadTopic(root string, id int) (*Topic, error) {
 	dir := filepath.Join(filepath.Clean(root), strconv.Itoa(id))
 	log.Printf("Loading topic %d from %s\n", id, dir)
 
-	topic := &Topic{
-		root: dir,
-		Id:   id,
-	}
+	topic := NewTopic(dir, id)
 
 	content := filepath.Join(dir, POST_MARKDOWN)
 	if IsExist(content) {
@@ -107,8 +114,8 @@ func LoadTopic(root string, id int) (*Topic, error) {
 	pd, e := ini.Load(filepath.Join(dir, PROCESS_INI))
 	if e == nil {
 		sec := pd.Section("local")
-		topic.MaxPage = sec.Key("max_page").MustInt(0)
-		topic.MaxFloor = sec.Key("max_floor").MustInt(0)
+		topic.MaxPage = sec.Key("max_page").MustInt(1)
+		topic.MaxFloor = sec.Key("max_floor").MustInt(-1)
 	}
 
 	md := new(Metadata)
@@ -124,7 +131,7 @@ func LoadTopic(root string, id int) (*Topic, error) {
 	}
 	topic.Metadata = md
 
-	topic.loadAt = Now()
+	topic.Modify()
 
 	return topic, nil
 }
@@ -149,4 +156,14 @@ func (t *Topic) Content() (string, error) {
 		return "", e
 	}
 	return string(data), nil
+}
+
+func (t *Topic) Stop() {
+	t.timers.EAC(func(_ time.Duration, timer *time.Timer) {
+		timer.Stop()
+	})
+}
+
+func (t *Topic) Modify() {
+	t.modAt = Now()
 }

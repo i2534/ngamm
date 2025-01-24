@@ -97,31 +97,24 @@ func (srv *Server) viewMiddleware() gin.HandlerFunc {
 
 func (srv *Server) topicList() func(c *gin.Context) {
 	return func(c *gin.Context) {
-		cache := srv.cache
-		cache.lock.RLock()
-		defer cache.lock.RUnlock()
-
-		topics := make([]Topic, 0, len(cache.topics))
+		topics := srv.cache.topics
 
 		ims := c.GetHeader("If-Modified-Since")
 		if ims != "" {
 			if t, e := time.Parse(time.RFC1123, ims); e == nil {
-				for _, topic := range cache.topics {
-					if topic.loadAt.After(t) {
-						topics = append(topics, *topic)
+				ret := make([]*Topic, 0, topics.Size())
+				topics.Each(func(_ int, topic *Topic) {
+					if topic.modAt.After(t) {
+						ret = append(ret, topic)
 					}
-				}
+				})
 
-				c.JSON(http.StatusOK, topics)
+				c.JSON(http.StatusOK, ret)
 				return
 			}
 		}
 
-		for _, topic := range cache.topics {
-			topics = append(topics, *topic)
-		}
-
-		c.JSON(http.StatusOK, topics)
+		c.JSON(http.StatusOK, topics.Values())
 	}
 }
 
@@ -133,11 +126,7 @@ func (srv *Server) topicInfo() func(c *gin.Context) {
 			return
 		}
 
-		cache := srv.cache
-		cache.lock.RLock()
-		defer cache.lock.RUnlock()
-
-		topic, has := cache.topics[id]
+		topic, has := srv.cache.topics.Get(id)
 		if !has {
 			c.JSON(http.StatusNotFound, toErr("Topic not found"))
 			return
@@ -156,30 +145,35 @@ func (srv *Server) topicAdd() func(c *gin.Context) {
 		}
 
 		cache := srv.cache
-		lock := cache.lock
-		lock.RLock()
-		if _, has := cache.topics[id]; has {
-			lock.RUnlock()
+		if cache.topics.Has(id) {
 			c.JSON(http.StatusConflict, toErr("Topic already exists"))
 			return
 		}
-		lock.RUnlock()
+
+		topic := NewTopic(filepath.Join(cache.topicRoot, strconv.Itoa(id)), id)
+		topic.Create = Now()
+		topic.Metadata.UpdateCron = DEFAULT_CRON
+
+		cache.topics.Put(id, topic)
 
 		select {
 		case cache.queue <- id:
-			lock.Lock()
-			defer lock.Unlock()
-
-			topic := &Topic{
-				root:   filepath.Join(cache.topicRoot, strconv.Itoa(id)),
-				Id:     id,
-				Create: Now(),
-				Metadata: &Metadata{
-					UpdateCron: DEFAULT_CRON,
-				},
-			}
-			cache.topics[id] = topic
+			srv.addCron(topic)
 			go topic.Save()
+
+			// 刚创建的帖子, 先更新几次, 以便快速获取内容
+			intervals := []time.Duration{
+				5,
+				15,
+				30,
+			}
+			for _, interval := range intervals {
+				timer := time.AfterFunc(interval*time.Minute, func() {
+					srv.cache.queue <- id
+					topic.timers.Delete(interval)
+				})
+				topic.timers.Put(interval, timer)
+			}
 
 			c.JSON(http.StatusCreated, id)
 		default:
@@ -197,19 +191,18 @@ func (srv *Server) topicDel() func(c *gin.Context) {
 		}
 
 		cache := srv.cache
-		cache.lock.Lock()
-		defer cache.lock.Unlock()
 
-		topic, has := cache.topics[id]
+		topic, has := cache.topics.Get(id)
 		if !has {
 			c.JSON(http.StatusNotFound, toErr("Topic not found"))
 			return
 		}
 
-		delete(cache.topics, id)
+		cache.topics.Delete(id)
 
 		go func() {
 			log.Println("Delete topic", id)
+			topic.Stop()
 			dir := topic.root
 			if dir != "" {
 				recycles := filepath.Join(cache.topicRoot, DIR_RECYCLE_BIN)
@@ -247,33 +240,29 @@ func (srv *Server) topicUpdate() func(c *gin.Context) {
 			return
 		}
 
-		cache := srv.cache
-		cache.lock.Lock()
-		defer cache.lock.Unlock()
-
-		topic, has := cache.topics[id]
+		topic, has := srv.cache.topics.Get(id)
 		if !has {
 			c.JSON(http.StatusNotFound, toErr("Topic not found"))
 			return
 		}
 
 		md := new(Metadata)
-		if err := c.ShouldBindJSON(md); err != nil {
+		if e := c.ShouldBindJSON(md); e != nil {
 			c.JSON(http.StatusBadRequest, toErr("Invalid request body"))
 			return
 		}
-		topic.Metadata.Merge(md)
-
-		uc := topic.Metadata.UpdateCron
+		uc := md.UpdateCron
 		if uc != "" {
-			_, err := cron.ParseStandard(uc)
-			if err != nil {
+			_, e := cron.ParseStandard(uc)
+			if e != nil {
 				c.JSON(http.StatusBadRequest, toErr("Invalid cron expression"))
 				return
 			}
 		}
-
+		topic.Metadata.Merge(md)
 		srv.addCron(topic)
+		topic.Stop()
+		topic.Modify()
 		go topic.Save()
 
 		c.JSON(http.StatusOK, id)
@@ -289,11 +278,8 @@ func (srv *Server) topicFresh() func(c *gin.Context) {
 		}
 
 		cache := srv.cache
-		cache.lock.RLock()
-		defer cache.lock.RUnlock()
 
-		_, has := cache.topics[id]
-		if !has {
+		if !cache.topics.Has(id) {
 			c.JSON(http.StatusNotFound, toErr("Topic not found"))
 			return
 		}
@@ -325,17 +311,14 @@ func (srv *Server) viewTopicRes() func(c *gin.Context) {
 			return
 		}
 
-		cache := srv.cache
 		id, e := strconv.Atoi(tid)
 		if e != nil {
 			c.String(http.StatusBadRequest, "Invalid topic ID")
 			return
 		}
 
-		cache.lock.RLock()
-		defer cache.lock.RUnlock()
-
-		topic, has := cache.topics[id]
+		cache := srv.cache
+		topic, has := cache.topics.Get(id)
 		if !has {
 			c.String(http.StatusNotFound, "Topic not found")
 			return
@@ -498,11 +481,7 @@ func (srv *Server) viewTopic() func(c *gin.Context) {
 		if e != nil {
 			title = "Invalid topic ID"
 		} else {
-			cache := srv.cache
-			cache.lock.RLock()
-			defer cache.lock.RUnlock()
-
-			topic, has := cache.topics[id]
+			topic, has := srv.cache.topics.Get(id)
 			if !has {
 				title = "Topic not found"
 			} else {

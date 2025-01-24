@@ -27,7 +27,7 @@ var (
 	ASSETSA_JSON    = "assets.json"
 	DELETE_FLAG     = "deleted_at"
 	DEFAULT_CRON    = "@every 1h"
-	QUEUE_SIZE      = 999
+	QUEUE_SIZE      = 9999
 	AUTHOR_ID       = 0
 	DELETE_TIME     = 7 * 24
 	TIME_LOC        = Local()
@@ -44,13 +44,16 @@ type Config struct {
 type cache struct {
 	lock      *sync.RWMutex
 	topicRoot string
-	loaded    bool // topics already loaded
-	topics    map[int]*Topic
-	queue     chan int // adding or update topic id
+	loaded    bool                  // topics already loaded
+	topics    *SyncMap[int, *Topic] // all topics
+	queue     chan int              // adding or update topic id
 	smile     *Smile
 }
 
 func (c *cache) close() {
+	c.topics.EAC(func(_ int, topic *Topic) {
+		topic.Stop()
+	})
 	close(c.queue)
 }
 
@@ -224,7 +227,7 @@ func (srv *Server) loadTopics() {
 	if e != nil {
 		log.Println("Failed to read topic root dir:", e)
 	} else {
-		cache.topics = make(map[int]*Topic, len(files))
+		cache.topics = NewSyncMap[int, *Topic]()
 		for _, file := range files {
 			if !file.IsDir() {
 				continue
@@ -242,12 +245,11 @@ func (srv *Server) loadTopics() {
 				continue
 			}
 
+			cache.topics.Put(id, topic)
 			srv.addCron(topic)
-
-			cache.topics[id] = topic
 		}
 
-		log.Println("Loaded", len(cache.topics), "topics")
+		log.Println("Loaded", cache.topics.Size(), "topics")
 	}
 	cache.loaded = true
 }
@@ -310,16 +312,22 @@ func (srv *Server) process() {
 	cache := srv.cache
 	for id := range cache.queue {
 		log.Println("Processing topic", id)
+
+		old, has := cache.topics.Get(id)
+		if !has {
+			log.Println("Topic not found, is it deleted ?")
+			continue
+		}
+
 		// 先检查 process.ini, assets.json 存在与否, 如果文件夹存在但文件不存在, ngapost2md 会认为其是无效的帖子, 不予更新
-		dir := filepath.Join(cache.topicRoot, strconv.Itoa(id))
+		dir := old.root
 		// 创建文件夹, 防止因为异步导致文件夹在判断 process.ini, assets.json 之后被创建, 然后导致 ngapost2md 无法更新
 		os.MkdirAll(dir, 0755)
 
 		if IsExist(dir) {
 			ini := filepath.Join(dir, PROCESS_INI)
 			if !IsExist(ini) {
-				log.Println("No process.ini found for topic, create it...")
-
+				// log.Println("No process.ini found for topic, create it...")
 				data := `[local]
 max_page = 1
 max_floor = -1`
@@ -329,8 +337,7 @@ max_floor = -1`
 			}
 			aj := filepath.Join(dir, ASSETSA_JSON)
 			if !IsExist(aj) {
-				log.Println("No assets.json found for topic, create it...")
-
+				// log.Println("No assets.json found for topic, create it...")
 				data := "{}"
 				if e := os.WriteFile(aj, []byte(data), 0644); e != nil {
 					log.Println("Failed to create assets.json:", e)
@@ -350,9 +357,7 @@ max_floor = -1`
 				}
 				topic.Metadata.retryCount = 0
 
-				cache.lock.Lock()
-				cache.topics[id] = topic
-				cache.lock.Unlock()
+				cache.topics.Put(id, topic)
 
 				srv.sse.notify(SSEMessage{
 					Event: "topicUpdated",
@@ -360,14 +365,13 @@ max_floor = -1`
 				})
 			}
 		} else {
-			cache.lock.Lock()
-			topic, has := cache.topics[id]
-			if has {
+			if topic, has := cache.topics.Get(id); has {
 				topic.Result = DownResult{
 					Success: false,
 					Message: msg,
 					Time:    Now(),
 				}
+				topic.Modify()
 
 				md := topic.Metadata
 				if md.MaxRetryCount > 0 {
@@ -380,7 +384,6 @@ max_floor = -1`
 					}
 				}
 			}
-			cache.lock.Unlock()
 		}
 	}
 }

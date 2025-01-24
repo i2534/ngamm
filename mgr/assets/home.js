@@ -3,6 +3,7 @@ function init(hasToken, ngaPostBase) {
     const headers = {};
     const sorts = { key: 'Id', order: 'asc' };
     const pageSize = 15;
+    let lastList = new Date();
     let topics = [];
     let currentPage = 1;
 
@@ -48,7 +49,7 @@ function init(hasToken, ngaPostBase) {
         const hs = { ...headers };
         const inc = !id && topics && topics.length > 0;
         if (inc) {
-            hs['If-Modified-Since'] = new Date().toUTCString();
+            hs['If-Modified-Since'] = lastList.toUTCString();
         }
         const response = await fetch(`${origin}/topic${id ? ('/' + id) : ''}`
             , { headers: hs }
@@ -61,6 +62,9 @@ function init(hasToken, ngaPostBase) {
             throw new Error('Failed to fetch topics');
         }
         const ret = await response.json();
+        if (!id) {
+            lastList = new Date();
+        }
         if (!inc) {
             return ret;
         }
@@ -204,7 +208,7 @@ function init(hasToken, ngaPostBase) {
     }
 
     async function createTopic() {
-        let id = document.getElementById('createId').value;
+        let id = document.getElementById('createId').value.trim();
         if (!id) {
             alert('请输入帖子 ID 或链接');
             return;
@@ -247,7 +251,7 @@ function init(hasToken, ngaPostBase) {
                 alert(`删除帖子 ${data} 成功`);
                 // listTopics();
                 dealTopic(id, (_, index) => {
-                    delete topics[index];
+                    topics.splice(index, 1);
                     renderTopics();
                 });
             } catch (error) {
@@ -270,7 +274,7 @@ function init(hasToken, ngaPostBase) {
     async function submitSched() {
         closeDialog();
         const id = document.getElementById('TopicID').value;
-        const cron = document.getElementById('UpdateCron').value;
+        const cron = document.getElementById('UpdateCron').value.trim();
         const maxRetryCount = document.getElementById('MaxRetryCount').value;
         try {
             const response = await fetch(`${origin}/topic/${id}`, {
@@ -404,7 +408,7 @@ function init(hasToken, ngaPostBase) {
     window.addEventListener('load', () => {
         loadAuthToken();
         listTopics();
-        setupSSE();
+        setInterval(listTopics, 60000);
     });
 }
 
