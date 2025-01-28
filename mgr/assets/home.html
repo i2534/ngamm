@@ -16,12 +16,13 @@
 
 <body>
     <div id="tokenSection" class="hidden">
-        <h2 class="inline">设置Token</h2>
-        <input type="text" id="authToken" placeholder="Authorization Token">
+        <h2 class="inline">设置 Token</h2>
+        <input type="text" class="long" id="authToken" placeholder="Authorization Token">
         <button onclick="setAuthToken()">设置</button>
     </div>
     <h2 class="inline">添加帖子</h2>
-    <input type="text" id="createId" placeholder="帖子 ID 或 地址">
+    <input type="text" class="long" id="createId" placeholder="帖子 ID 或 地址">
+    <span class="clear-button" title="清空" onclick="clearInput('createId')">×</span>
     <button onclick="createTopic()">添加</button>
     <button onclick="listTopics()">刷新列表</button>
     <div id="topics"></div>

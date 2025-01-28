@@ -1,7 +1,7 @@
 function init(hasToken, ngaPostBase) {
     const origin = window.location.origin;
     const headers = {};
-    const sorts = { key: 'Id', order: 'asc' };
+    const sorts = { key: 'Id', order: 'desc' };
     const pageSize = 15;
     let lastList = new Date();
     let topics = [];
@@ -404,6 +404,7 @@ function init(hasToken, ngaPostBase) {
     window.freshTopic = freshTopic;
     window.submitSched = submitSched;
     window.closeDialog = closeDialog;
+    window.clearInput = (id) => document.getElementById(id).value = '';
 
     window.addEventListener('load', () => {
         loadAuthToken();

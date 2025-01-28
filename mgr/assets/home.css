@@ -53,6 +53,7 @@ button:hover {
 .inline {
     display: inline-block;
     margin-right: 10px;
+    vertical-align: middle;
 }
 
 .delete-button {
@@ -168,4 +169,27 @@ dialog::backdrop {
 #pagination button.active {
     background-color: #4CAF50;
     color: white;
+}
+
+input.long {
+    width: 300px;
+    max-width: 80%;
+    text-align: left;
+}
+
+@media (max-width: 600px) {
+    input.long {
+        width: 200px;
+        max-width: 70%;
+    }
+}
+
+.clear-button {
+    cursor: pointer;
+    color: #888;
+    font-size: 18px;
+}
+
+.clear-button:hover {
+    color: #333;
 }
