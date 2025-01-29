@@ -12,13 +12,14 @@
     <script>
         const id = '{{.ID}}';
         const token = '{{.Token}}';
+        const content = `{{.Markdown}}`;
         const ngaPostBase = '{{.BaseUrl}}/read.php?tid=';
-        render(ngaPostBase, id, token);
+        render(ngaPostBase, id, token, content);
     </script>
 </head>
 
 <body>
-    <div id="content" class="hidden">{{.Markdown}}</div>
+    <div id="content"></div>
     <div>由 <a href="https://github.com/i2534/ngamm" target="_blank">NGAMM</a> 提供管理</div>
 </body>
 

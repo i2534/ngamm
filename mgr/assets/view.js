@@ -1,4 +1,4 @@
-function render(ngaPostBase, id, token) {
+function render(ngaPostBase, id, token, content) {
     const origin = window.location.origin;
     const baseUrl = `${origin}/view/${token}/${id}/`;
     marked.use(markedBaseUrl.baseUrl(baseUrl));
@@ -26,9 +26,17 @@ function render(ngaPostBase, id, token) {
             return `<img ${attrSrc}="${href}" alt="${text}" title="${title || text}" onerror="tryReloadImage(this)">`;
         },
         link({ href, text, title }) {
-            return `<a href="${href}" title="${title || text}" target="_blank">${text === 'url' ? href : text}</a>`;
+            return makeLink(href, text, title);
         }
     };
+
+    function makeLink(href, text, title) {
+        let target = '';
+        if (!href.startsWith('#')) {
+            target = ' target="_blank"';
+        }
+        return `<a href="${href}" title="${title || text}"${target}>${text === 'url' ? href : text}</a>`;
+    }
 
     const extensions = [{
         name: 'video',
@@ -127,26 +135,54 @@ function render(ngaPostBase, id, token) {
     window.tryReloadImage = tryReloadImage;
     window.tryReloadVideo = tryReloadVideo;
     window.addEventListener('load', () => {
-        const content = document.querySelector('#content');
-        let html = content.innerHTML;
-        html = html.replaceAll(/\[quote\](.*?)\[\/quote\]/gs, `<div class="quote">$1</div>`);
-        content.innerHTML = marked.parse(html);
+        const c = document.querySelector('#content');
+        if (c) {
+            let html = content;
+            // 修正引用, > 会被处理成 blockquote, 但 [quote] 需要自行处理
+            // html = html.replaceAll(/\[quote\](.*?)\[\/quote\]/gs, `<div class="quote">$1</div>`);
+            html = html.replaceAll('[quote]', '<blockquote class="quote">').replaceAll('[/quote]', '</blockquote>');
+            // 修正下挂评论和它后面的楼层标题
+            html = html.replaceAll(/\*---下挂评论---\*\s*(.*?)\s*\*---下挂评论---\*\s*/gs, (_, m1) => {
+                return `<div class="comment"><div class="subtitle">评论</div>${marked.parse('##### ' + m1)}</div>
 
-        const observer = new IntersectionObserver((entries, observer) => {
-            entries.forEach(entry => {
-                if (entry.isIntersecting) {
-                    const tar = entry.target;
-                    [attrSrc, attrPoster].forEach(n => {
-                        if (tar.hasAttribute(n)) {
-                            tar.setAttribute(n.substring(1), tar.getAttribute(n));
-                            tar.removeAttribute(n);
-                        }
-                    });
-                    observer.unobserve(tar);
-                }
+----
+
+##### `;
             });
-        });
-        content.querySelectorAll('img, video').forEach(e => observer.observe(e));
-        content.classList.remove('hidden');
+            html = marked.parse(html);
+            // 处理因为包裹在 html 标签内导致的无法被 marked 处理的链接
+            html = html.replaceAll(/\[(.+?)\]\((.+?)\)/g, (_, text, src) => {
+                return makeLink(src, text);
+            });
+            c.innerHTML = html;
+            const observer = new IntersectionObserver((entries, observer) => {
+                entries.filter(e => e.isIntersecting)
+                    .forEach(entry => {
+                        const tar = entry.target;
+                        if (tar.closest('blockquote, .comment') !== null) {
+                            // quote 和 comment 下的图片和视频要被手工加载, 但是表情要显示
+                            if (tar.getAttribute('title') === 'img') {
+                                const btn = document.createElement('button');
+                                btn.textContent = '显示图片';
+                                btn.classList.add('show');
+                                btn.onclick = function () {
+                                    btn.insertAdjacentElement('afterend', tar);
+                                    btn.remove();
+                                };
+                                tar.insertAdjacentElement('afterend', btn);
+                                tar.remove();
+                            }
+                        }
+                        [attrSrc, attrPoster].forEach(n => {
+                            if (tar.hasAttribute(n)) {
+                                tar.setAttribute(n.substring(1), tar.getAttribute(n));
+                                tar.removeAttribute(n);
+                            }
+                        });
+                        observer.unobserve(tar);
+                    });
+            });
+            c.querySelectorAll('img, video').forEach(e => observer.observe(e));
+        }
     });
 }

@@ -17,13 +17,35 @@ a {
     text-decoration: none;
 }
 
-.hidden {
-    display: none;
-}
-
+blockquote,
 .quote {
     background: #f2eddf;
     border: 1px solid #e6e1d3;
     margin: 0.8em;
     padding: 0.6em 0.8em;
+}
+
+.comment {
+    background: #ffedc3;
+    padding: 0.5em;
+    border: 0.2em solid #e6c3a8;
+    border-radius: 0.5em
+}
+
+.subtitle {
+    color: #888;
+}
+
+.subtitle:hover {
+    color: #aaa;
+}
+
+.show {
+    background: #eacfbb;
+    color: #423d35;
+    line-height: 1.5em;
+    border: none;
+    border-radius: 0.25em;
+    padding: 0 0.5em;
+    margin: 0.1em 0.2em
 }
