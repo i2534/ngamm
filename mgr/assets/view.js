@@ -18,7 +18,10 @@ function render(ngaPostBase, id, token, content) {
                 } else {
                     floor = '';
                 }
-                return `<h${depth} floor=${floor}>${text.replaceAll(/&lt;.+?&gt;/g, '')}</h${depth}>`;
+                let value = text.replaceAll(/<span id="pid\d+">(.*?)<\/span>/g, '$1:'); // 与回复的统一化
+                value = value.replaceAll(/(\d+)\.\[\d+\]\s*<pid:(\d+)>\s*(\d{4}-\d{2}-\d{2}\s*\d{2}:\d{2}:\d{2})\s*by\s*(.+?):/g,
+                    '<span id="pid$2" class="floor"><span class="num">$1</span><span class="author">$4</span><span class="time">$3</span></span>');
+                return `<h${depth} floor=${floor}>${value}</h${depth}>`;
             }
             return `<h${depth}>${text}</h${depth}>`;
         },
@@ -27,7 +30,10 @@ function render(ngaPostBase, id, token, content) {
         },
         link({ href, text, title }) {
             return makeLink(href, text, title);
-        }
+        },
+        text({ text }) {
+            return text.replace(/\n/g, '<br>');
+        },
     };
 
     function makeLink(href, text, title) {
@@ -140,21 +146,29 @@ function render(ngaPostBase, id, token, content) {
             let html = content;
             // 修正引用, > 会被处理成 blockquote, 但 [quote] 需要自行处理
             // html = html.replaceAll(/\[quote\](.*?)\[\/quote\]/gs, `<div class="quote">$1</div>`);
-            html = html.replaceAll('[quote]', '<blockquote class="quote">').replaceAll('[/quote]', '</blockquote>');
+            html = html.replaceAll('[quote]', '<blockquote _type="tag">').replaceAll('[/quote]', '</blockquote>');
             // 修正下挂评论和它后面的楼层标题
             html = html.replaceAll(/\*---下挂评论---\*\s*(.*?)\s*\*---下挂评论---\*\s*/gs, (_, m1) => {
-                return `<div class="comment"><div class="subtitle">评论</div>${marked.parse('##### ' + m1)}</div>
-
-----
-
-##### `;
+                return `<div class="comment"><div class="subtitle">评论</div>${marked.parse('##### ' + m1)}</div>\n\n----\n\n##### `;
             });
+            // 修正代码块, 在 md 中被处理成 <div class="quote">...</div>
+            html = html.replaceAll(/<div class="quote">(.*?)<\/div>/gs, (_, m1) => {
+                const value = m1.trim()
+                    .replaceAll('&#36;', '$')
+                    .replaceAll('&#39;', "'")
+                    .replaceAll('&quot;', '"')
+                    .replaceAll('&lt;', '<')
+                    .replaceAll('&gt;', '>')
+                return '\n```\n' + value + '\n```\n';
+            });
+            // 渲染
             html = marked.parse(html);
             // 处理因为包裹在 html 标签内导致的无法被 marked 处理的链接
             html = html.replaceAll(/\[(.+?)\]\((.+?)\)/g, (_, text, src) => {
                 return makeLink(src, text);
             });
             c.innerHTML = html;
+
             const observer = new IntersectionObserver((entries, observer) => {
                 entries.filter(e => e.isIntersecting)
                     .forEach(entry => {
@@ -183,6 +197,17 @@ function render(ngaPostBase, id, token, content) {
                     });
             });
             c.querySelectorAll('img, video').forEach(e => observer.observe(e));
+
+            // 为所有 code 元素添加双击事件监听器
+            c.querySelectorAll('code').forEach(e => {
+                e.addEventListener('dblclick', () => {
+                    const range = document.createRange();
+                    range.selectNodeContents(e);
+                    const selection = window.getSelection();
+                    selection.removeAllRanges();
+                    selection.addRange(range);
+                });
+            });
         }
     });
 }
