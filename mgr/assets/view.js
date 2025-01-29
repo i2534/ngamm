@@ -12,21 +12,24 @@ function render(ngaPostBase, id, token, content) {
                 return `<h${depth}><a href="${ngaPostBase}${id}" target="_blank">${text}</a></h${depth}>`;
             }
             if (depth === 5) {// 楼层
-                let floor = text.match(/(\d+)\.\[\d+\]/);
-                if (floor) {
-                    floor = floor[1];
-                } else {
-                    floor = '';
-                }
                 let value = text.replaceAll(/<span id="pid\d+">(.*?)<\/span>/g, '$1:'); // 与回复的统一化
                 value = value.replaceAll(/(\d+)\.\[\d+\]\s*<pid:(\d+)>\s*(\d{4}-\d{2}-\d{2}\s*\d{2}:\d{2}:\d{2})\s*by\s*(.+?):/g,
-                    '<span id="pid$2" class="floor"><span class="num">$1</span><span class="author">$4</span><span class="time">$3</span></span>');
-                return `<h${depth} floor=${floor}>${value}</h${depth}>`;
+                    `<h${depth} floor="$1">
+                        <div id="pid$2" class="floor">
+                            <span class="num">$1</span><span class="author">$4</span><span class="time">$3</span>
+                        </div>
+                    </h${depth}>`);
+                return value;
             }
             return `<h${depth}>${text}</h${depth}>`;
         },
         image({ href, text, title }) {
-            return `<img ${attrSrc}="${href}" alt="${text}" title="${title || text}" onerror="tryReloadImage(this)">`;
+            const ext = href.split('.').pop().toLowerCase();
+            if (['mp4', 'webm', 'ogg'].includes(ext)) {
+                return makeVideo(href, title || text || '');
+            } else {
+                return `<img ${attrSrc}="${href}" alt="${text}" title="${title || text}" onerror="tryReloadImage(this)">`;
+            }
         },
         link({ href, text, title }) {
             return makeLink(href, text, title);
@@ -42,6 +45,16 @@ function render(ngaPostBase, id, token, content) {
             target = ' target="_blank"';
         }
         return `<a href="${href}" title="${title || text}"${target}>${text === 'url' ? href : text}</a>`;
+    }
+    function makeVideo(src, title, poster) {
+        let extra = '';
+        if (title !== '') {
+            extra += ` title="${title}"`;
+        }
+        if (poster) {
+            extra += ` ${attrPoster}="${poster}"`;
+        }
+        return `<video ${attrSrc}="${src}"${extra} controls onerror="tryReloadVideo(this)"></video>`;
     }
 
     const extensions = [{
@@ -63,7 +76,7 @@ function render(ngaPostBase, id, token, content) {
             return false;
         },
         renderer({ src, poster }) {
-            return `<video ${attrSrc}="${src}" ${attrPoster}="${poster}" controls onerror="tryReloadVideo(this)"></video>`;
+            return makeVideo(src, '', poster);
         }
     }];
     marked.use({ renderer, extensions });
