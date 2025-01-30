@@ -14,12 +14,6 @@ video {
     max-width: 100%;
 }
 
-img:empty,
-video:empty {
-    min-width: 10px;
-    min-height: 10px;
-}
-
 a {
     text-decoration: none;
 }

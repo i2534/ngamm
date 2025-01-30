@@ -53,9 +53,7 @@ function render(ngaPostBase, id, token, content) {
         if (title && title !== '') {
             extra += ` title="${title}"`;
         }
-        if (poster && poster !== '') {
-            extra += ` ${attrPoster}="${poster}"`;
-        }
+        extra += ` ${attrPoster}="${poster || ''}"`;
         return `<video ${attrSrc}="${src}"${extra} controls onerror="tryReloadVideo(this)"></video>`;
     }
 
@@ -78,7 +76,7 @@ function render(ngaPostBase, id, token, content) {
             return false;
         },
         renderer({ src, poster }) {
-            return makeVideo(src, '', poster);
+            return makeVideo(src, '', poster || '');
         }
     }];
     marked.use({ renderer, extensions });
@@ -243,7 +241,6 @@ function render(ngaPostBase, id, token, content) {
                             if (tar.hasAttribute(n)) {
                                 tar.setAttribute(n.substring(1), tar.getAttribute(n));
                                 tar.removeAttribute(n);
-                                console.log(tar.src);
                             }
                         });
                         observer.unobserve(tar);
@@ -269,7 +266,14 @@ function render(ngaPostBase, id, token, content) {
             // 监视所有 img 和 video 元素的可见性
             c.querySelectorAll('img, video')
                 .forEach(e => {
-                    e.tagName.toLowerCase() === 'img' ? e.src = loading : e.poster = loading;
+                    if (e.tagName.toLowerCase() === 'img') {
+                        e.src = loading;
+                        e.addEventListener('load', function () { // 图片加载完毕后更新宽度
+                            e.style.width = e.naturalWidth + 'px';
+                        });
+                    } else {
+                        e.poster = loading;
+                    }
                     observer.observe(e)
                 });
 
