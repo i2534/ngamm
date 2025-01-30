@@ -451,17 +451,13 @@ func (srv *Server) replaySmile(c *gin.Context, name string) {
 			c.Redirect(http.StatusMovedPermanently, url)
 		}
 	} else {
-		path := cache.smile.Local(name, srv.nga.GetUA())
-		if path == "" {
-			log.Printf("Smile %s not found\n", name)
+		data, e := cache.smile.Local(name, srv.nga.GetUA())
+		if e != nil {
+			c.String(http.StatusInternalServerError, "Failed to load smile:"+e.Error())
+		} else if data == nil {
 			c.String(http.StatusNotFound, "Smile "+name+" not found")
 		} else {
-			data, e := os.ReadFile(path)
-			if e != nil {
-				c.String(http.StatusInternalServerError, "Failed to read smile")
-				return
-			}
-			c.Data(http.StatusOK, ContentType(path), data)
+			c.Data(http.StatusOK, ContentType(name), data)
 		}
 	}
 }

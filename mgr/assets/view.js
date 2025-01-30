@@ -24,12 +24,7 @@ function render(ngaPostBase, id, token, content) {
             return `<h${depth}>${text}</h${depth}>`;
         },
         image({ href, text, title }) {
-            const ext = href.split('.').pop().toLowerCase();
-            if (['mp4', 'webm', 'ogg'].includes(ext)) {
-                return makeVideo(href, title || text || '');
-            } else {
-                return `<img ${attrSrc}="${href}" alt="${text}" title="${title || text}" onerror="tryReloadImage(this)">`;
-            }
+            return makeMedia(href, href, title || text);
         },
         link({ href, text, title }) {
             return makeLink(href, text, title);
@@ -38,7 +33,14 @@ function render(ngaPostBase, id, token, content) {
             return text.replace(/\n/g, '<br>');
         },
     };
-
+    function makeMedia(src, name, title, poster) {
+        const ext = name.split('.').pop().toLowerCase();
+        if (['mp4', 'webm', 'ogg'].includes(ext)) {
+            return makeVideo(src, title, poster);
+        } else {
+            return `<img ${attrSrc}="${src}" alt="${title}" title="${title}" onerror="tryReloadImage(this)">`;
+        }
+    }
     function makeLink(href, text, title) {
         let target = '';
         if (!href.startsWith('#')) {
@@ -48,10 +50,10 @@ function render(ngaPostBase, id, token, content) {
     }
     function makeVideo(src, title, poster) {
         let extra = '';
-        if (title !== '') {
+        if (title && title !== '') {
             extra += ` title="${title}"`;
         }
-        if (poster) {
+        if (poster && poster !== '') {
             extra += ` ${attrPoster}="${poster}"`;
         }
         return `<video ${attrSrc}="${src}"${extra} controls onerror="tryReloadVideo(this)"></video>`;
@@ -150,66 +152,126 @@ function render(ngaPostBase, id, token, content) {
         video.poster = `${baseUrl}at_${floor}_${escape(video.poster)}`;
         video.src = `${baseUrl}at_${floor}_${escape(video.src)}`;
     }
+    // 修正引用, > 会被处理成 blockquote, 但 [quote] 需要自行处理
+    function fixQuote(html) {
+        return html.replaceAll('[quote]', '<blockquote _type="tag">')
+            .replaceAll('[/quote]', '</blockquote>');
+    }
+    // 修正 [attach]
+    function fixAttach(html) {
+        return html.replaceAll(/\[attach\](.*?)\[\/attach\]/g, (_, m1) => {
+            let src = m1.trim();
+            if (m1.startsWith('./')) {
+                src = 'https://img.nga.178.com/attachments/' + src.substring(2);
+            }
+            const url = new URL(src);
+            return makeMedia(src, url.pathname);
+        });
+    }
+    // 修正下挂评论和它后面的楼层标题
+    function fixComment(html) {
+        return html.replaceAll(/\*---下挂评论---\*\s*(.*?)\s*\*---下挂评论---\*\s*/gs, (_, m1) => {
+            return `<div class="comment"><div class="subtitle">评论</div>${marked.parse('##### ' + m1)}</div>\n\n----\n\n##### `;
+        });
+    }
+    // 修正代码块, 在 md 中被处理成 <div class="quote">...</div>
+    function fixCode(html) {
+        return html.replaceAll(/<div class="quote">(.*?)<\/div>/gs, (_, m1) => {
+            const value = m1.trim()
+                .replaceAll('&#36;', '$')
+                .replaceAll('&#39;', "'")
+                .replaceAll('&quot;', '"')
+                .replaceAll('&lt;', '<')
+                .replaceAll('&gt;', '>')
+            return '\n```\n' + value + '\n```\n';
+        });
+    }
+    // 处理因为包裹在 html 标签内导致的无法被 marked 处理的链接
+    function fixLink(html) {
+        return html.replaceAll(/\[(.+?)\]\((.+?)\)/g, (_, text, src) => {
+            return makeLink(src, text);
+        });
+    }
+    // 修正表情
+    function fixEmoji(html) {
+        return html.replaceAll(/&amp;#(\d+);/g, '&#$1;');
+    }
 
     window.tryReloadImage = tryReloadImage;
     window.tryReloadVideo = tryReloadVideo;
-    window.addEventListener('load', () => {
-        const c = document.querySelector('#content');
-        if (c) {
-            let html = content;
-            // 修正引用, > 会被处理成 blockquote, 但 [quote] 需要自行处理
-            // html = html.replaceAll(/\[quote\](.*?)\[\/quote\]/gs, `<div class="quote">$1</div>`);
-            html = html.replaceAll('[quote]', '<blockquote _type="tag">').replaceAll('[/quote]', '</blockquote>');
-            // 修正下挂评论和它后面的楼层标题
-            html = html.replaceAll(/\*---下挂评论---\*\s*(.*?)\s*\*---下挂评论---\*\s*/gs, (_, m1) => {
-                return `<div class="comment"><div class="subtitle">评论</div>${marked.parse('##### ' + m1)}</div>\n\n----\n\n##### `;
-            });
-            // 修正代码块, 在 md 中被处理成 <div class="quote">...</div>
-            html = html.replaceAll(/<div class="quote">(.*?)<\/div>/gs, (_, m1) => {
-                const value = m1.trim()
-                    .replaceAll('&#36;', '$')
-                    .replaceAll('&#39;', "'")
-                    .replaceAll('&quot;', '"')
-                    .replaceAll('&lt;', '<')
-                    .replaceAll('&gt;', '>')
-                return '\n```\n' + value + '\n```\n';
-            });
-            // 渲染
-            html = marked.parse(html);
-            // 处理因为包裹在 html 标签内导致的无法被 marked 处理的链接
-            html = html.replaceAll(/\[(.+?)\]\((.+?)\)/g, (_, text, src) => {
-                return makeLink(src, text);
-            });
-            c.innerHTML = html;
+    window.jumpToFloor = function () {
+        const floor = document.querySelector('#floorInput').value.trim();
+        if (floor === '') {
+            return;
+        }
+        const target = document.querySelector(`h5[floor="${floor}"]`);
+        if (target) {
+            target.scrollIntoView({ behavior: 'smooth' });
+        } else {
+            alert('未找到指定楼层');
+        }
+    };
+    window.toggleJumpMenu = function () {
+        const menu = document.querySelector('#jumpMenu');
+        menu.classList.toggle('hidden');
+    };
 
-            const observer = new IntersectionObserver((entries, observer) => {
-                entries.filter(e => e.isIntersecting)
-                    .forEach(entry => {
-                        const tar = entry.target;
-                        if (tar.closest('blockquote, .comment') !== null) {
-                            // quote 和 comment 下的图片和视频要被手工加载, 但是表情要显示
-                            if (tar.getAttribute('title') === 'img') {
-                                const btn = document.createElement('button');
-                                btn.textContent = '显示图片';
-                                btn.classList.add('show');
-                                btn.onclick = function () {
-                                    btn.insertAdjacentElement('afterend', tar);
-                                    btn.remove();
-                                };
-                                tar.insertAdjacentElement('afterend', btn);
-                                tar.remove();
-                            }
-                        }
+    const observer = new IntersectionObserver((entries, observer) => {
+        entries.filter(e => e.isIntersecting)
+            .forEach(entry => {
+                const tar = entry.target;
+                if (tar.closest('blockquote, .comment') !== null) {
+                    // quote 和 comment 下的图片和视频要被手工加载, 但是表情要显示
+                    if (tar.getAttribute('title') === 'img') {
+                        const btn = document.createElement('button');
+                        btn.textContent = '显示图片';
+                        btn.classList.add('show');
+                        btn.onclick = function () {
+                            btn.insertAdjacentElement('afterend', tar);
+                            btn.remove();
+                        };
+                        tar.insertAdjacentElement('afterend', btn);
+                        tar.remove();
+                    }
+                }
+
+                window.clearTimeout(tar.loadId);
+                tar.loadId = setTimeout(() => {
+                    const rect = tar.getBoundingClientRect();
+                    if (rect.width > 0 && rect.height > 0) {
                         [attrSrc, attrPoster].forEach(n => {
                             if (tar.hasAttribute(n)) {
                                 tar.setAttribute(n.substring(1), tar.getAttribute(n));
                                 tar.removeAttribute(n);
+                                console.log(tar.src);
                             }
                         });
                         observer.unobserve(tar);
-                    });
+                    }
+                }, 100);
             });
-            c.querySelectorAll('img, video').forEach(e => observer.observe(e));
+    });
+
+    window.addEventListener('load', () => {
+        const c = document.querySelector('#content');
+        if (c) {
+            const loading = URL.createObjectURL(new Blob([document.querySelector('#loading').innerHTML], { type: 'image/svg+xml' }));
+
+            let html = content;
+            [fixQuote, fixAttach, fixComment, fixCode, fixEmoji].forEach(fix => {
+                html = fix(html);
+            })
+            // 渲染
+            html = marked.parse(html);
+            html = fixLink(html);
+            c.innerHTML = html;
+
+            // 监视所有 img 和 video 元素的可见性
+            c.querySelectorAll('img, video')
+                .forEach(e => {
+                    e.tagName.toLowerCase() === 'img' ? e.src = loading : e.poster = loading;
+                    observer.observe(e)
+                });
 
             // 为所有 code 元素添加双击事件监听器
             c.querySelectorAll('code').forEach(e => {
@@ -220,6 +282,20 @@ function render(ngaPostBase, id, token, content) {
                     selection.removeAllRanges();
                     selection.addRange(range);
                 });
+            });
+
+            // 限制跳转楼层的值
+            const floors = Array.from(c.querySelectorAll('h5[floor]'))
+                .map(e => parseInt(e.getAttribute('floor')));
+            const floorInput = document.querySelector('#floorInput');
+            floorInput.max = Math.max(...floors);
+            floorInput.addEventListener('input', () => {
+                const value = parseInt(floorInput.value);
+                if (value < floorInput.min) {
+                    floorInput.value = floorInput.min;
+                } else if (value > floorInput.max) {
+                    floorInput.value = floorInput.max;
+                }
             });
         }
     });

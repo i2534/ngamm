@@ -9,7 +9,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
-	"sync"
+	"sync/atomic"
 	"time"
 )
 
@@ -17,14 +17,15 @@ type item struct {
 	Name   string `json:"name"`
 	Path   string `json:"path"`
 	Prefix string `json:"prefix"`
+	data   atomic.Value
 }
 type Smile struct {
 	Base string `json:"base"`
 	List []item `json:"list"`
 
 	root   string
-	cache  sync.Map
-	failed sync.Map
+	cache  *SyncMap[string, *item]
+	failed *SyncMap[string, bool]
 	client *http.Client
 }
 
@@ -36,12 +37,14 @@ func Unmarshal(data []byte) (*Smile, error) {
 	smile.client = &http.Client{
 		Timeout: 10 * time.Second,
 	}
+	smile.cache = NewSyncMap[string, *item]()
+	smile.failed = NewSyncMap[string, bool]()
 	return smile, nil
 }
 
 func (s *Smile) find(name string) *item {
-	if v, has := s.cache.Load(name); has {
-		return v.(*item)
+	if v, has := s.cache.Get(name); has {
+		return v
 	}
 
 	n := name[:strings.LastIndex(name, ".")]
@@ -56,7 +59,7 @@ func (s *Smile) find(name string) *item {
 		}
 
 		if b {
-			s.cache.Store(name, &v)
+			s.cache.Put(name, &v)
 			return &v
 		}
 	}
@@ -80,18 +83,27 @@ func (s *Smile) URL(name string) string {
 	return s.Base + v.Path
 }
 
-func (s *Smile) Local(name, ua string) string {
+func (s *Smile) Local(name, ua string) ([]byte, error) {
 	v := s.find(name)
 	if v == nil {
-		return ""
+		return nil, fmt.Errorf("smile %s not found", name)
+	}
+	d := v.data.Load()
+	if d != nil {
+		return d.([]byte), nil
 	}
 	path := filepath.Join(s.root, v.Path)
 	if IsExist(path) {
-		return path
+		data, e := os.ReadFile(path)
+		if e != nil {
+			return nil, fmt.Errorf("failed to read smile %s: %w", name, e)
+		}
+		v.data.Store(data)
+		return data, nil
 	}
 
-	if _, ok := s.failed.Load(name); ok {
-		return ""
+	if s.failed.Has(name) {
+		return nil, fmt.Errorf("failed to download smile %s", name)
 	}
 
 	url := s.URL(name)
@@ -100,11 +112,11 @@ func (s *Smile) Local(name, ua string) string {
 			if e := s.fetch(path, url, ua); e != nil {
 				log.Println(e.Error())
 			} else {
-				s.failed.Store(name, true)
+				s.failed.Put(name, true)
 			}
 		}()
 	}
-	return ""
+	return nil, nil
 }
 
 func (s *Smile) fetch(path, url, ua string) error {

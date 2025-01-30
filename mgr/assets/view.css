@@ -1,6 +1,12 @@
+html {
+    margin: 0;
+    padding: 0;
+}
+
 body {
     background-color: #f5e8cb;
-    padding: 0 1em;
+    margin: 0;
+    padding: 0 0.5em;
 }
 
 img,
@@ -23,6 +29,10 @@ blockquote {
     border: 1px solid #e6e1d3;
     margin: 0.8em;
     padding: 0.6em 0.8em;
+}
+
+.hidden {
+    display: none;
 }
 
 .comment {
@@ -84,4 +94,42 @@ code {
 .floor>.time {
     color: #bdb5ab;
     font-size: 0.8em;
+}
+
+.floating-button {
+    position: fixed;
+    top: 10px;
+    right: 10px;
+    background-color: #591804;
+    color: white;
+    border: none;
+    border-radius: 5px;
+    padding: 5px;
+    cursor: pointer;
+    z-index: 1000;
+}
+
+.jump-menu {
+    position: fixed;
+    top: 50px;
+    right: 10px;
+    background-color: #fff8e7;
+    border: 1px solid #591804;
+    padding: 5px;
+    z-index: 1000;
+}
+
+.jump-menu input {
+    width: 100px;
+    padding: 5px;
+    margin-right: 10px;
+}
+
+.jump-menu button {
+    padding: 5px 10px;
+    background-color: rgb(245, 232, 203);
+    color: #1a3959;
+    border: none;
+    border-radius: 1px;
+    cursor: pointer;
 }
