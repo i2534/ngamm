@@ -338,7 +338,7 @@ function init(hasToken, ngaPostBase) {
 
     async function viewTopic(id, maxFloor) {
         const token = headers.Authorization ? await hashToken(headers.Authorization) : '-';
-        window.open(`${origin}/view/${token}/${id}?${maxFloor}`, '_blank');
+        window.open(`${origin}/view/${token}/${id}?max=${maxFloor}`, '_blank');
     }
 
     function closeDialog(dialogId) {

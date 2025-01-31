@@ -225,11 +225,12 @@ function render(ngaPostBase, id, token, content) {
                 const tar = entry.target;
                 if (tar.closest('blockquote, .comment') !== null) {
                     // quote 和 comment 下的图片和视频要被手工加载, 但是表情要显示
-                    if (tar.getAttribute('title') === 'img') {
+                    if (tar.getAttribute('title') === 'img' && !tar.hasAttribute('show')) {
                         const btn = document.createElement('button');
                         btn.textContent = '显示图片';
                         btn.classList.add('show');
                         btn.onclick = function () {
+                            tar.setAttribute('show', '');
                             btn.insertAdjacentElement('afterend', tar);
                             btn.remove();
                         };
