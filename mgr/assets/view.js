@@ -12,8 +12,8 @@ function render(ngaPostBase, id, token, content) {
                 return `<h${depth}><a href="${ngaPostBase}${id}" target="_blank">${text}</a></h${depth}>`;
             }
             if (depth === 5) {// 楼层
-                let value = text.replaceAll(/<span id="pid\d+">(.*?)<\/span>/g, '$1:'); // 与回复的统一化
-                value = value.replaceAll(/(\d+)\.\[\d+\]\s*<pid:(\d+)>\s*(\d{4}-\d{2}-\d{2}\s*\d{2}:\d{2}:\d{2})\s*by\s*(.+?):/g,
+                let value = text.replace(/<span id="pid\d+">(.*?)<\/span>/g, '$1:'); // 与回复的统一化
+                value = value.replace(/(\d+)\.\[\d+\]\s*<pid:(\d+)>\s*(\d{4}-\d{2}-\d{2}\s*\d{2}:\d{2}:\d{2})\s*by\s*(.+?):/g,
                     `<h${depth} floor="$1">
                         <div id="pid$2" class="floor">
                             <span class="num">$1</span><span class="author">$4</span><span class="time">$3</span>
@@ -30,7 +30,9 @@ function render(ngaPostBase, id, token, content) {
             return makeLink(href, text, title);
         },
         text({ text }) {
-            return text.replace(/\n/g, '<br>');
+            return text.replace(/\n/g, '<br>')
+                .replace(/\[color=(.+?)\](.*?)\[\/color\]/gs, '<span style="color:$1">$2</span>')
+                .replace(/\[font=(.+?)\](.*?)\[\/font\]/gs, '<span style="font-family:$1">$2</span>');
         },
     };
     function makeMedia(src, name, title, poster) {
@@ -102,7 +104,10 @@ function render(ngaPostBase, id, token, content) {
             if (src.startsWith(origin)) {
                 img.src = src + '?t=' + new Date().getTime(); // 添加时间戳以强制重新加载
             } else if (src.indexOf('.nga.') != -1 && src.indexOf('/smile/') != -1) {// NGA 服务器拒绝跨域访问, 那就让服务器做代理
-                const name = src.substring(src.lastIndexOf('/') + 1);
+                let name = src.substring(src.lastIndexOf('/') + 1);
+                if (name === '') {// FIX NG娘表情 name 缺失
+                    name = 'ng_' + encodeURIComponent(oldTitle);
+                }
                 img.src = `${origin}/view/${token}/smile/${name}`;
             }
             img.style.cursor = oldCursor;
@@ -157,7 +162,7 @@ function render(ngaPostBase, id, token, content) {
     }
     // 修正 [attach]
     function fixAttach(html) {
-        return html.replaceAll(/\[attach\](.*?)\[\/attach\]/g, (_, m1) => {
+        return html.replace(/\[attach\](.*?)\[\/attach\]/g, (_, m1) => {
             let src = m1.trim();
             if (m1.startsWith('./')) {
                 src = 'https://img.nga.178.com/attachments/' + src.substring(2);
@@ -168,13 +173,13 @@ function render(ngaPostBase, id, token, content) {
     }
     // 修正下挂评论和它后面的楼层标题
     function fixComment(html) {
-        return html.replaceAll(/\*---下挂评论---\*\s*(.*?)\s*\*---下挂评论---\*\s*/gs, (_, m1) => {
+        return html.replace(/\*---下挂评论---\*\s*(.*?)\s*\*---下挂评论---\*\s*/gs, (_, m1) => {
             return `<div class="comment"><div class="subtitle">评论</div>${marked.parse('##### ' + m1)}</div>\n\n----\n\n##### `;
         });
     }
     // 修正代码块, 在 md 中被处理成 <div class="quote">...</div>
     function fixCode(html) {
-        return html.replaceAll(/<div class="quote">(.*?)<\/div>/gs, (_, m1) => {
+        return html.replace(/<div class="quote">(.*?)<\/div>/gs, (_, m1) => {
             const value = m1.trim()
                 .replaceAll('&#36;', '$')
                 .replaceAll('&#39;', "'")
@@ -186,13 +191,13 @@ function render(ngaPostBase, id, token, content) {
     }
     // 处理因为包裹在 html 标签内导致的无法被 marked 处理的链接
     function fixLink(html) {
-        return html.replaceAll(/\[(.+?)\]\((.+?)\)/g, (_, text, src) => {
+        return html.replace(/\[(.+?)\]\((.+?)\)/g, (_, text, src) => {
             return makeLink(src, text);
         });
     }
     // 修正表情
     function fixEmoji(html) {
-        return html.replaceAll(/&amp;#(\d+);/g, '&#$1;');
+        return html.replace(/&amp;#(\d+);/g, '&#$1;');
     }
 
     window.tryReloadImage = tryReloadImage;

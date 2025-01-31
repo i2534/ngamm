@@ -47,11 +47,17 @@ func (s *Smile) find(name string) *item {
 		return v
 	}
 
-	n := name[:strings.LastIndex(name, ".")]
+	i := strings.LastIndex(name, "/")
+	var n string
+	if i == -1 {
+		n = name
+	} else {
+		n = name[:i]
+	}
 	for _, v := range s.List {
 		b := v.Path == name //完全匹配路径
 		if !b {
-			if v.Prefix == "" { // 无前缀, 完全匹配名称 TODO: 此处可能有问题, 因为基础表情基本没人用
+			if v.Prefix == "" { //无前缀, 完全匹配名称
 				b = v.Name == n
 			} else { //前缀匹配且后缀匹配名称
 				b = strings.HasPrefix(n, v.Prefix) && strings.HasSuffix(n, v.Name)
