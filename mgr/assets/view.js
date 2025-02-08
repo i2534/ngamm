@@ -31,8 +31,12 @@ function render(ngaPostBase, id, token, content) {
         },
         text({ text }) {
             return text.replace(/\n/g, '<br>')
-                .replace(/\[color=(.+?)\](.*?)\[\/color\]/gs, '<span style="color:$1">$2</span>')
-                .replace(/\[font=(.+?)\](.*?)\[\/font\]/gs, '<span style="font-family:$1">$2</span>');
+                .replace(/\[color(=(.+?))?\](.*?)\[\/color\]/gs, (_m, _, color, text) => {
+                    return `<span style="color:${color || 'inherit'}">${text}</span>`;
+                })
+                .replace(/\[font(=(.+?))?\](.*?)\[\/font\]/gs, (_m, _, font, text) => {
+                    return `<span style="font-family:${font || 'inherit'}">${text}</span>`;
+                })
         },
     };
     function makeMedia(src, name, title, poster) {
@@ -180,12 +184,14 @@ function render(ngaPostBase, id, token, content) {
     // 修正代码块, 在 md 中被处理成 <div class="quote">...</div>
     function fixCode(html) {
         return html.replace(/<div class="quote">(.*?)<\/div>/gs, (_, m1) => {
-            const value = m1.trim()
-                .replaceAll('&#36;', '$')
-                .replaceAll('&#39;', "'")
-                .replaceAll('&quot;', '"')
-                .replaceAll('&lt;', '<')
-                .replaceAll('&gt;', '>')
+            // const value = m1.trim()
+            //     .replaceAll(/&#(\d+);/g, (_, m1) => String.fromCharCode(parseInt(m1)))
+            //     .replaceAll('&quot;', '"')
+            //     .replaceAll('&lt;', '<')
+            //     .replaceAll('&gt;', '>')
+            const ta = document.createElement('textarea');
+            ta.innerHTML = m1.trim();
+            const value = ta.value;
             return '\n```\n' + value + '\n```\n';
         });
     }
