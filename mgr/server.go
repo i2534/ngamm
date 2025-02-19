@@ -18,18 +18,19 @@ import (
 )
 
 var (
-	DIR_TOPIC_ROOT  = "."        // 帖子存储根目录, 目前只在工作目录
-	DIR_RECYCLE_BIN = "recycles" // 回收站目录
-	POST_MARKDOWN   = "post.md"
-	PROCESS_INI     = "process.ini"
-	METADATA_JSON   = "metadata.json"
-	ASSETSA_JSON    = "assets.json"
-	DELETE_FLAG     = "deleted_at"
-	DEFAULT_CRON    = "@every 1h"
-	QUEUE_SIZE      = 9999
-	AUTHOR_ID       = 0
-	DELETE_TIME     = 7 * 24
-	TIME_LOC        = Local()
+	DIR_TOPIC_ROOT    = "."        // 帖子存储根目录, 目前只在工作目录
+	DIR_RECYCLE_BIN   = "recycles" // 回收站目录
+	POST_MARKDOWN     = "post.md"
+	PROCESS_INI       = "process.ini"
+	METADATA_JSON     = "metadata.json"
+	ASSETSA_JSON      = "assets.json"
+	DELETE_FLAG       = "deleted_at"
+	DEFAULT_CRON      = "@every 1h"
+	DEFAULT_MAX_RETRY = 3
+	QUEUE_SIZE        = 9999
+	AUTHOR_ID         = 0
+	DELETE_TIME       = 7 * 24
+	TIME_LOC          = Local()
 )
 
 type Config struct {
@@ -65,7 +66,6 @@ type Server struct {
 	stopLock *sync.Mutex
 	cache    *cache
 	cron     *cron.Cron
-	hc       *http.Client
 }
 
 func customLogFormatter(param gin.LogFormatterParams) string {
@@ -124,9 +124,6 @@ func NewServer(cfg *Config, nga *Client) (*Server, error) {
 			queue:     make(chan int, QUEUE_SIZE),
 			topicRoot: filepath.Join(nga.GetRoot(), DIR_TOPIC_ROOT),
 		},
-		hc: &http.Client{
-			Timeout: 10 * time.Second,
-		},
 	}
 
 	if e := srv.init(engine); e != nil {
@@ -135,6 +132,9 @@ func NewServer(cfg *Config, nga *Client) (*Server, error) {
 	if cfg.Token != "" {
 		cfg.tokenHash = ShortSha1(cfg.Token)
 	}
+
+	nga.srv = srv
+
 	return srv, nil
 }
 
@@ -291,7 +291,7 @@ max_floor = -1`
 			}
 		}
 
-		ok, msg := srv.nga.Download(id)
+		ok, msg := srv.nga.DownTopic(id)
 		if ok {
 			topic, e := LoadTopic(cache.topicRoot, id)
 			if e != nil {
@@ -315,10 +315,14 @@ max_floor = -1`
 				topic.Modify()
 
 				md := topic.Metadata
-				if md.MaxRetryCount > 0 {
+				if md.MaxRetryCount >= 0 {
+					mrc := md.MaxRetryCount
+					if mrc == 0 {
+						mrc = DEFAULT_MAX_RETRY
+					}
 					md.retryCount += 1
 					log.Println("Failed count:", md.retryCount)
-					if md.retryCount >= md.MaxRetryCount {
+					if md.retryCount >= mrc {
 						log.Printf("Max retry count reached (%d) for topic %d\n", md.retryCount, id)
 						srv.cron.Remove(md.updateCronId)
 						md.updateCronId = 0
@@ -327,6 +331,20 @@ max_floor = -1`
 			}
 		}
 	}
+}
+
+func (srv *Server) getTopics(username string) []*Topic {
+	cache := srv.cache
+	cache.lock.RLock()
+	defer cache.lock.RUnlock()
+
+	ret := make([]*Topic, 0)
+	for _, topic := range cache.topics.Values() {
+		if topic.Author == username {
+			ret = append(ret, topic)
+		}
+	}
+	return ret
 }
 
 // 启动服务器并阻塞
@@ -377,6 +395,7 @@ func (srv *Server) Stop() {
 
 	srv.cron.Stop()
 	srv.cache.close()
+	srv.nga.Close()
 
 	close(srv.stopChan)
 

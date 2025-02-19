@@ -26,24 +26,6 @@ func (m *Metadata) Merge(n *Metadata) {
 	m.MaxRetryCount = n.MaxRetryCount
 }
 
-type CustomTime struct {
-	time.Time
-}
-
-func FromTime(t time.Time) CustomTime {
-	return CustomTime{Time: t}
-}
-func Now() CustomTime {
-	return FromTime(time.Now())
-}
-func (t CustomTime) MarshalJSON() ([]byte, error) {
-	if t.IsZero() {
-		return []byte(`""`), nil
-	}
-	lt := t.In(TIME_LOC)
-	return json.Marshal(lt.Format("2006-01-02 15:04:05"))
-}
-
 type DownResult struct {
 	Success bool
 	Message string

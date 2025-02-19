@@ -86,7 +86,7 @@ function init(hasToken, ngaPostBase) {
         const start = (currentPage - 1) * pageSize;
         const paginated = topics.slice(start, start + pageSize);
 
-        const headers = `
+        const ths = `
         <tr>
             <th key="Id" onclick="sortTopics('Id')">ID</th>
             <th key="Title" onclick="sortTopics('Title')">标题</th>
@@ -101,7 +101,7 @@ function init(hasToken, ngaPostBase) {
         <tr>
             <td><a href="${ngaPostBase}${topic.Id}" target="_blank">${topic.Id}</a></td>
             <td>${topic.Title}</td>
-            <td>${topic.Author}</td>
+            <td><span class="author">${topic.Author}</span></td>
             <td>${topic.MaxFloor}</td>
             <td><span class="update-${topic.Result.Success ? 'success' : 'failed'}">${topic.Result.Time}</span></td>
             <td>${topic.Metadata.UpdateCron}</td>
@@ -113,7 +113,7 @@ function init(hasToken, ngaPostBase) {
             </td>
         </tr>`).join('');
 
-        const table = `<table>${headers}${rows}</table>`;
+        const table = `<table>${ths}${rows}</table>`;
         const container = document.getElementById('topics');
         container.innerHTML = table;
 
@@ -122,7 +122,72 @@ function init(hasToken, ngaPostBase) {
             th.classList.add(sorts.order === 'asc' ? 'sorted-asc' : 'sorted-desc');
         }
 
+        renderSubscribe(container);
+
         renderPagination();
+    }
+
+    function renderSubscribe(container) {
+        const authors = new Map();
+        const changeStatus = (author, subscribed) => {
+            const nss = authors.get(author);
+            if (nss) {
+                nss.forEach(ns => {
+                    ns.title = subscribed ? '点击取消订阅' : '点击订阅';
+                    ns.classList.remove(subscribed ? 'unsubscribed' : 'subscribed');
+                    ns.classList.add(subscribed ? 'subscribed' : 'unsubscribed');
+                });
+            }
+        };
+        container.querySelectorAll('span.author').forEach(span => {
+            const author = span.innerText;
+            const ns = document.createElement('span');
+            ns.innerHTML = `&#9733;`;
+            ns.classList.add('subscribe');
+            ns.addEventListener('click', () => {
+                const subscribed = ns.classList.contains('subscribed');
+                if (subscribed) {
+                    if (!confirm(`确认要取消订阅 ${author} ?`)) {
+                        return;
+                    }
+                }
+                fetch(`${origin}/subscribe/${encodeURIComponent(author)}`, {
+                    headers,
+                    method: subscribed ? 'DELETE' : 'POST'
+                })
+                    .then(async (r) => {
+                        const data = await r.json();
+                        if (r.ok) {
+                            changeStatus(author, !subscribed);
+                        } else {
+                            alert('操作失败', data.error);
+                        }
+                    });
+            });
+            span.insertAdjacentElement('afterend', ns);
+            let nss = authors.get(author);
+            if (!nss) {
+                nss = new Set();
+                authors.set(author, nss);
+            }
+            nss.add(ns);
+        });
+
+        fetch(`${origin}/subscribe/batch?${Date.now()}`, {
+            headers: {
+                ...headers,
+                'Content-Type': 'application/json'
+            },
+            method: 'POST',
+            body: JSON.stringify([...authors.keys()])
+        }).then(async (r) => {
+            const data = await r.json();
+            if (r.ok) {
+                Object.entries(data).forEach(([author, subscribed]) => {
+                    changeStatus(author, subscribed);
+                });
+            }
+        });
     }
 
     function renderPagination() {
@@ -367,31 +432,6 @@ function init(hasToken, ngaPostBase) {
         } catch (error) {
             alert(error.message);
         }
-    }
-
-    function setupSSE() {
-        const es = new EventSource(`${origin}/sse`);
-        es.onmessage = async function (event) {
-            if (!event.data) {
-                return;
-            }
-            console.log('SSE message:', event.data);
-            const data = JSON.parse(event.data);
-            if (data.event === 'topicUpdated') {
-                const id = data.data;
-                console.log('Topic updated:', id);
-                const topic = await fetchTopics(id);
-                if (topic) {
-                    dealTopic(id, (_, index) => {
-                        topics[index] = topic;
-                        renderTopics();
-                    });
-                }
-            }
-        };
-        es.onerror = function (event) {
-            console.error('SSE error:', event);
-        };
     }
 
     window.setAuthToken = setAuthToken;

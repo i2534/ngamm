@@ -1,6 +1,7 @@
-function render(ngaPostBase, id, token, content) {
+function render(ngaBase, id, token, content) {
     const origin = window.location.origin;
     const baseUrl = `${origin}/view/${token}/${id}/`;
+    const ngaPostBase = `${ngaBase}/read.php?tid=`;
     marked.use(markedBaseUrl.baseUrl(baseUrl));
 
     const attrSrc = '_src', attrPoster = '_poster';
@@ -184,11 +185,6 @@ function render(ngaPostBase, id, token, content) {
     // 修正代码块, 在 md 中被处理成 <div class="quote">...</div>
     function fixCode(html) {
         return html.replace(/<div class="quote">(.*?)<\/div>/gs, (_, m1) => {
-            // const value = m1.trim()
-            //     .replaceAll(/&#(\d+);/g, (_, m1) => String.fromCharCode(parseInt(m1)))
-            //     .replaceAll('&quot;', '"')
-            //     .replaceAll('&lt;', '<')
-            //     .replaceAll('&gt;', '>')
             const ta = document.createElement('textarea');
             ta.innerHTML = m1.trim();
             const value = ta.value;
@@ -208,6 +204,7 @@ function render(ngaPostBase, id, token, content) {
 
     window.tryReloadImage = tryReloadImage;
     window.tryReloadVideo = tryReloadVideo;
+
     window.jumpToFloor = function () {
         const floor = document.querySelector('#floorInput').value.trim();
         if (floor === '') {
@@ -312,6 +309,14 @@ function render(ngaPostBase, id, token, content) {
                 } else if (value > floorInput.max) {
                     floorInput.value = floorInput.max;
                 }
+            });
+
+            // 打开层主信息
+            c.querySelectorAll('.floor>.author').forEach(e => {
+                e.addEventListener('click', function () {
+                    const name = e.textContent;
+                    window.open(`${ngaBase}/nuke.php?func=ucp&username=${GBK.URI.encodeURIComponent(name)}`);
+                });
             });
         }
     });

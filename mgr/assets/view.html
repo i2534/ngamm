@@ -7,14 +7,14 @@
     <title>{{.Title}}</title>
     <script src="https://cdn.jsdelivr.net/npm/marked"></script>
     <script src="https://cdn.jsdelivr.net/npm/marked-base-url"></script>
+    <script src="https://cdn.jsdelivr.net/npm/gbk.js@0.3.0/dist/gbk.min.js"></script>
     <link rel="stylesheet" href="/asset/view.css?v={{.Version}}">
     <script src="/asset/view.js?v={{.Version}}"></script>
     <script>
         const id = '{{.ID}}';
         const token = '{{.Token}}';
         const content = `{{.Markdown}}`;
-        const ngaPostBase = '{{.BaseUrl}}/read.php?tid=';
-        render(ngaPostBase, id, token, content);
+        render('{{.BaseUrl}}', id, token, content);
     </script>
 </head>
 

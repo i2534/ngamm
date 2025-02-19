@@ -193,3 +193,16 @@ input.long {
 .clear-button:hover {
     color: #333;
 }
+
+.subscribe {
+    padding-left: 5px;
+    cursor: pointer;
+}
+
+.subscribed {
+    color: gold;
+}
+
+.unsubscribed {
+    color: gray;
+}

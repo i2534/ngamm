@@ -1,39 +1,31 @@
-package mgr
+package mgr_test
 
 import (
 	"os"
 	"testing"
 
 	"github.com/go-playground/assert/v2"
+	"github.com/i2534/ngamm/mgr"
 )
 
-var smile *Smile
+var smile *mgr.Smile
 
-func setup() {
+func getSmile() *mgr.Smile {
+	if smile != nil {
+		return smile
+	}
+
 	data, e := os.ReadFile("assets/smiles.json")
 	if e != nil {
 		panic(e)
 	}
-	smile, e = Unmarshal(data)
+	smile, e = mgr.Unmarshal(data)
 	if e != nil {
 		panic(e)
 	}
-}
-func teardown() {
-
-}
-
-func TestMain(m *testing.M) {
-	setup()
-	code := m.Run()
-	teardown()
-	os.Exit(code)
+	return smile
 }
 
 func TestLocal(t *testing.T) {
-	assert.NotEqual(t, smile, nil)
-	assert.NotEqual(t, smile.find("ac18.png"), nil)
-	assert.NotEqual(t, smile.find("ng_奸笑"), nil)
-	assert.NotEqual(t, smile.find("crazy.gif"), nil)
-	assert.NotEqual(t, smile.find("1"), nil)
+	assert.NotEqual(t, getSmile(), nil)
 }

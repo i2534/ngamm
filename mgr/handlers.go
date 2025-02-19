@@ -2,6 +2,7 @@ package mgr
 
 import (
 	"embed"
+	"fmt"
 	"html/template"
 	"io"
 	"log"
@@ -51,6 +52,17 @@ func (srv *Server) regHandlers() {
 		tg.POST("/:id", srv.topicUpdate())
 		tg.DELETE("/:id", srv.topicDel())
 		tg.POST("/fresh/:id", srv.topicFresh())
+	}
+
+	sg := r.Group("/subscribe")
+	{
+		if has {
+			sg.Use(srv.topicMiddleware())
+		}
+		sg.GET("/:name", srv.subscribeStatus())
+		sg.POST("/:name", srv.subscribe())
+		sg.DELETE("/:name", srv.unsubscribe())
+		sg.POST("/batch", srv.subscribeBatchStatus())
 	}
 
 	vg := r.Group("/view")
@@ -136,6 +148,47 @@ func (srv *Server) topicInfo() func(c *gin.Context) {
 	}
 }
 
+func (srv *Server) addTopic(id int) error {
+	cache := srv.cache
+	if cache.topics.Has(id) {
+		return fmt.Errorf("topic already exists")
+	}
+
+	topic := NewTopic(filepath.Join(cache.topicRoot, strconv.Itoa(id)), id)
+	topic.Create = Now()
+	topic.Metadata.UpdateCron = DEFAULT_CRON
+
+	cache.topics.Put(id, topic)
+
+	select {
+	case cache.queue <- id:
+		srv.addCron(topic)
+		go topic.Save()
+
+		// 刚创建的帖子, 先更新几次, 以便快速获取内容
+		intervals := []time.Duration{
+			5,
+			10,
+			15,
+			25,
+			40,
+		}
+		for _, interval := range intervals {
+			timer := time.AfterFunc(interval*time.Minute, func() {
+				srv.cache.queue <- id
+				topic.timers.Delete(interval)
+			})
+			topic.timers.Put(interval, timer)
+		}
+
+		log.Println("Add topic", id)
+
+		return nil
+	default:
+		return fmt.Errorf("too many adding requests")
+	}
+}
+
 func (srv *Server) topicAdd() func(c *gin.Context) {
 	return func(c *gin.Context) {
 		id, e := strconv.Atoi(c.Param("id"))
@@ -144,42 +197,11 @@ func (srv *Server) topicAdd() func(c *gin.Context) {
 			return
 		}
 
-		cache := srv.cache
-		if cache.topics.Has(id) {
-			c.JSON(http.StatusConflict, toErr("Topic already exists"))
-			return
-		}
-
-		topic := NewTopic(filepath.Join(cache.topicRoot, strconv.Itoa(id)), id)
-		topic.Create = Now()
-		topic.Metadata.UpdateCron = DEFAULT_CRON
-
-		cache.topics.Put(id, topic)
-
-		select {
-		case cache.queue <- id:
-			srv.addCron(topic)
-			go topic.Save()
-
-			// 刚创建的帖子, 先更新几次, 以便快速获取内容
-			intervals := []time.Duration{
-				5,
-				10,
-				15,
-				25,
-				40,
-			}
-			for _, interval := range intervals {
-				timer := time.AfterFunc(interval*time.Minute, func() {
-					srv.cache.queue <- id
-					topic.timers.Delete(interval)
-				})
-				topic.timers.Put(interval, timer)
-			}
-
+		e = srv.addTopic(id)
+		if e != nil {
+			c.JSON(http.StatusConflict, toErr(e.Error()))
+		} else {
 			c.JSON(http.StatusCreated, id)
-		default:
-			c.JSON(http.StatusServiceUnavailable, toErr("Too many adding requests"))
 		}
 	}
 }
@@ -392,7 +414,7 @@ func (srv *Server) replayAttachment(c *gin.Context, name string, topic *Topic) {
 		}
 		req.Header.Set("User-Agent", srv.nga.GetUA())
 
-		resp, e := srv.hc.Do(req)
+		resp, e := DoHttp(req)
 		if e != nil {
 			c.String(http.StatusInternalServerError, "Failed to fetch attachment")
 			return
@@ -526,13 +548,15 @@ func (srv *Server) homePage() func(c *gin.Context) {
 			return
 		}
 		data := struct {
-			HasToken bool
-			BaseUrl  string
-			Version  string
+			HasToken        bool
+			BaseUrl         string
+			Version         string
+			DefaultMaxRetry int
 		}{
-			HasToken: srv.Cfg.Token != "",
-			BaseUrl:  srv.nga.BaseURL(),
-			Version:  srv.Cfg.GitHash,
+			HasToken:        srv.Cfg.Token != "",
+			BaseUrl:         srv.nga.BaseURL(),
+			Version:         srv.Cfg.GitHash,
+			DefaultMaxRetry: DEFAULT_MAX_RETRY,
 		}
 		c.Header("Content-Type", HTML_HEADER)
 		if e := tmpl.Execute(c.Writer, data); e != nil {
@@ -561,5 +585,60 @@ func (srv *Server) asset() func(c *gin.Context) {
 			return
 		}
 		c.Data(http.StatusOK, ContentType(name), data)
+	}
+}
+
+func (srv *Server) subscribeStatus() func(c *gin.Context) {
+	return func(c *gin.Context) {
+		name := c.Param("name")
+		if user, e := srv.nga.GetUser(name); e == nil {
+			c.JSON(http.StatusOK, user.Subscribed)
+		} else {
+			c.JSON(http.StatusOK, false)
+		}
+	}
+}
+func (srv *Server) subscribeBatchStatus() func(c *gin.Context) {
+	return func(c *gin.Context) {
+		var names []string
+		if e := c.ShouldBindJSON(&names); e != nil {
+			c.JSON(http.StatusBadRequest, toErr("Invalid request body"))
+			return
+		}
+		status := make(map[string]bool)
+		for _, name := range names {
+			if user, e := srv.nga.GetUser(name); e == nil {
+				status[name] = user.Subscribed
+			}
+		}
+		c.JSON(http.StatusOK, status)
+	}
+}
+func (srv *Server) subscribe() func(c *gin.Context) {
+	return func(c *gin.Context) {
+		name := c.Param("name")
+		if user, e := srv.nga.GetUser(name); e == nil {
+			if e = srv.nga.Subscribe(user.Id, true); e == nil {
+				c.JSON(http.StatusOK, user.Id)
+			} else {
+				c.JSON(http.StatusInternalServerError, toErr(e.Error()))
+			}
+		} else {
+			c.JSON(http.StatusInternalServerError, toErr(e.Error()))
+		}
+	}
+}
+func (srv *Server) unsubscribe() func(c *gin.Context) {
+	return func(c *gin.Context) {
+		name := c.Param("name")
+		if user, e := srv.nga.GetUser(name); e == nil {
+			if e = srv.nga.Subscribe(user.Id, false); e == nil {
+				c.JSON(http.StatusOK, user.Id)
+			} else {
+				c.JSON(http.StatusInternalServerError, toErr(e.Error()))
+			}
+		} else {
+			c.JSON(http.StatusInternalServerError, toErr(e.Error()))
+		}
 	}
 }
