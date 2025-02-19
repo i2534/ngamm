@@ -418,7 +418,7 @@ func (c *Client) doSubscribe(user *User) error {
 		if user.subscribeCronId > 0 {
 			c.cron.Remove(user.subscribeCronId)
 		}
-		if id, e := c.cron.AddFunc("@every 3m", func() {
+		if id, e := c.cron.AddFunc("@every 30m", func() {
 			topics := c.srv.getTopics(user.Name)
 			max := 0
 			for _, topic := range topics {
