@@ -1,5 +1,5 @@
 # 第一阶段：构建应用程序
-FROM golang:1.23-alpine AS builder
+FROM golang:1.24-alpine AS builder
 # 安装 git
 RUN apk add --no-cache git
 # 设置工作目录
@@ -29,11 +29,10 @@ WORKDIR /app
 COPY --from=builder /app/main .
 COPY --from=builder /app/entrypoint.sh .
 # COPY entrypoint.sh .
+# 设置环境变量
+# ENV TOKEN=""
 # 赋予脚本执行权限并执行脚本
 RUN chmod +x entrypoint.sh && sh entrypoint.sh fetch
-
-# 设置环境变量
-ENV TOKEN=""
 # 挂载文件夹
 VOLUME /app/data
 # 暴露应用程序运行的端口

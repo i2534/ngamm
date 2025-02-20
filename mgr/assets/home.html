@@ -40,6 +40,18 @@
             <button onclick="closeDialog()">取消</button>
         </div>
     </dialog>
+    <dialog id="subscribeDialog">
+        <div class="dialog-content">
+            <h2>订阅设置</h2>
+            <input type="hidden" id="author">
+            <p>帖子标题过滤, 包含这些词汇的才自动订阅, 为空则接受全部新帖<br />每行一个过滤条件, 只要有一个条件满足即认为接受<br />如果想同时满足几个词汇, 条件内的词汇用 + 连接</p>
+            <div>
+                <textarea id="subFilter" aria-label="subFilter" rows="5" style="width: 98%;"></textarea>
+            </div>
+            <button onclick="submitSubscribe()">确认</button>
+            <button onclick="closeDialog()">取消</button>
+        </div>
+    </dialog>
 </body>
 
 </html>

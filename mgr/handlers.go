@@ -605,21 +605,32 @@ func (srv *Server) subscribeBatchStatus() func(c *gin.Context) {
 			c.JSON(http.StatusBadRequest, toErr("Invalid request body"))
 			return
 		}
-		status := make(map[string]bool)
+		users := make(map[string]User)
 		for _, name := range names {
 			if user, e := srv.nga.GetUser(name); e == nil {
-				status[name] = user.Subscribed
+				users[name] = user
 			}
 		}
-		c.JSON(http.StatusOK, status)
+		c.JSON(http.StatusOK, users)
 	}
 }
 func (srv *Server) subscribe() func(c *gin.Context) {
 	return func(c *gin.Context) {
 		name := c.Param("name")
+		cond := make([]string, 0)
+		if e := c.ShouldBindJSON(&cond); e != nil {
+			c.JSON(http.StatusBadRequest, toErr("Invalid request body"))
+			return
+		}
+		if len(cond) > 0 {
+			for i, c := range cond {
+				cond[i] = strings.TrimSpace(c)
+			}
+		}
 		if user, e := srv.nga.GetUser(name); e == nil {
-			if e = srv.nga.Subscribe(user.Id, true); e == nil {
-				c.JSON(http.StatusOK, user.Id)
+			if e = srv.nga.Subscribe(user.Id, true, cond...); e == nil {
+				user, _ = srv.nga.GetUser(name)
+				c.JSON(http.StatusOK, user)
 			} else {
 				c.JSON(http.StatusInternalServerError, toErr(e.Error()))
 			}

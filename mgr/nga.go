@@ -5,14 +5,13 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"log"
 	"math/rand"
 	"net/http"
-	"os"
 	"os/exec"
 	"path/filepath"
 	"regexp"
-	"sort"
 	"strconv"
 	"strings"
 	"sync"
@@ -23,18 +22,19 @@ import (
 )
 
 const (
-	NGA_CFG   = "config.ini"
-	USER_JSON = "users.json"
+	NGA_CFG  = "config.ini"
+	USER_DIR = "users"
 )
 
 type User struct {
-	Id              int        `json:"id"`
-	Name            string     `json:"name"`
-	Loc             string     `json:"loc"`
-	RegDate         CustomTime `json:"regDate"`
-	Subscribed      bool       `json:"subscribed"`
-	subscribeCronId cron.EntryID
-	bootSubTask     *time.Timer
+	Id              int          `json:"id"`
+	Name            string       `json:"name"`
+	Loc             string       `json:"loc"`
+	RegDate         CustomTime   `json:"regDate"`
+	Subscribed      bool         `json:"subscribed"`
+	SubFilter       *[]string    `json:"filter,omitempty"`
+	subscribeCronId cron.EntryID // 订阅任务的 ID
+	bootSubTask     *time.Timer  // 启动后准备订阅任务的定时器
 }
 
 type byUid []User
@@ -44,10 +44,9 @@ func (a byUid) Swap(i, j int)      { a[i], a[j] = a[j], a[i] }
 func (a byUid) Less(i, j int) bool { return a[i].Id < a[j].Id }
 
 type users struct {
-	lock     *sync.RWMutex
-	data     map[string]User
-	file     string
-	saveTask *time.Timer
+	root *ExtRoot
+	lock *sync.RWMutex
+	data map[string]User
 }
 
 func (u *users) load() {
@@ -55,44 +54,38 @@ func (u *users) load() {
 	defer u.lock.Unlock()
 
 	us := make([]User, 0)
-	fp := u.file
-	if IsExist(fp) {
-		data, e := os.ReadFile(fp)
-		if e != nil {
-			log.Printf("读取用户信息文件失败: %s\n", e.Error())
-		} else {
-			e = json.Unmarshal(data, &us)
-			if e != nil {
-				log.Printf("解析用户信息失败: %s\n", e.Error())
-			}
-		}
-	}
-	u.data = make(map[string]User)
-	for _, user := range us {
-		u.data[user.Name] = user
-	}
-}
-
-func (u *users) save() {
-	u.lock.Lock()
-	defer u.lock.Unlock()
-
-	us := make([]User, 0, len(u.data))
-	for _, user := range u.data {
-		us = append(us, user)
-	}
-
-	sort.Sort(byUid(us))
-
-	data, e := json.Marshal(us)
+	es, e := u.root.ReadDir(".")
 	if e != nil {
-		log.Printf("保存用户信息失败: %s\n", e.Error())
+		log.Printf("读取用户信息目录失败: %s\n", e.Error())
 		return
 	}
 
-	fp := u.file
-	if e := os.WriteFile(fp, data, 0644); e != nil {
-		log.Printf("保存用户信息失败: %s\n", e.Error())
+	for _, e := range es {
+		if e.IsDir() || !strings.HasSuffix(e.Name(), ".json") {
+			continue
+		}
+		f, e := u.root.Open(e.Name())
+		if e != nil {
+			log.Printf("读取用户信息文件失败: %s\n", e.Error())
+		} else {
+			defer f.Close()
+			data, e := io.ReadAll(f)
+			if e != nil {
+				log.Printf("读取用户信息失败: %s\n", e.Error())
+			}
+			var u User
+			e = json.Unmarshal(data, &u)
+			if e != nil {
+				log.Printf("解析用户信息失败: %s\n", e.Error())
+			} else {
+				us = append(us, u)
+			}
+		}
+	}
+
+	u.data = make(map[string]User)
+	for _, user := range us {
+		u.data[user.Name] = user
 	}
 }
 
@@ -120,20 +113,28 @@ func (u *users) Put(name string, user User) {
 
 	u.data[name] = user
 
-	if u.saveTask != nil {
-		u.saveTask.Stop()
+	fn := fmt.Sprintf("%d.json", user.Id)
+	f, e := u.root.Create(fn)
+	if e != nil {
+		log.Printf("创建用户信息文件失败: %s\n", e.Error())
+		return
 	}
-	u.saveTask = time.AfterFunc(30*time.Second, func() {
-		u.save()
-	})
+	defer f.Close()
+
+	data, e := json.Marshal(user)
+	if e != nil {
+		log.Printf("序列化用户信息失败: %s\n", e.Error())
+		return
+	}
+	if _, e := f.Write(data); e != nil {
+		log.Printf("写入用户信息失败: %s\n", e.Error())
+	}
 }
 
 func (u *users) Close() error {
 	u.lock.Lock()
 	defer u.lock.Unlock()
-	if u.saveTask != nil {
-		u.saveTask.Stop()
-	}
+
 	for _, user := range u.data {
 		if user.bootSubTask != nil {
 			user.bootSubTask.Stop()
@@ -162,13 +163,19 @@ func InitNGA(program string) (*Client, error) {
 	if e != nil {
 		return nil, e
 	}
+	root.Mkdir(USER_DIR, 0755)
+	ur, e := root.OpenRoot(USER_DIR)
+	if e != nil {
+		return nil, e
+	}
+
 	client := &Client{
 		program: program,
 		root:    root,
 		users: &users{
+			root: &ExtRoot{ur},
 			lock: &sync.RWMutex{},
 			data: make(map[string]User),
-			file: filepath.Join(dir, USER_JSON),
 		},
 		cron: cron.New(cron.WithLocation(TIME_LOC)),
 	}
@@ -350,7 +357,7 @@ func (c *Client) GetUser(username string) (User, error) {
 		ipLoc := info["ipLoc"].(string)
 		regDate := int64(info["regdate"].(float64))
 
-		log.Printf("获取到用户 %s 的 UID %d\n", username, uid)
+		log.Printf("获取到用户 %s 的信息, UID = %d\n", username, uid)
 
 		u := User{
 			Id:      uid,
@@ -434,9 +441,39 @@ func (c *Client) doSubscribe(user *User) error {
 
 			for _, topic := range newest {
 				if topic.Miss {
-					log.Printf("用户 %s(%d) 的主题 %d 已无法访问\n", user.Name, user.Id, topic.Id)
+					log.Printf("帖子 %d 已无法访问\n", topic.Id)
 					continue
 				}
+
+				if (user.SubFilter != nil) && len(*user.SubFilter) > 0 {
+					matched := false
+					for _, cond := range *user.SubFilter {
+						cond = strings.TrimSpace(cond)
+						if strings.Contains(cond, "+") { // 必须同时包含多个条件
+							cs := strings.Split(cond, "+")
+							cm := true
+							for _, c := range cs {
+								c = strings.TrimSpace(c)
+								if !strings.Contains(topic.Title, c) {
+									cm = false
+									break
+								}
+							}
+							if cm {
+								matched = true
+								break
+							}
+						} else if strings.Contains(topic.Title, cond) { // 包含任意一个条件
+							matched = true
+							break
+						}
+					}
+					if !matched {
+						log.Printf("帖子 %d 主题 <%s> 不匹配过滤条件\n", topic.Id, topic.Title)
+						continue
+					}
+				}
+
 				e = c.srv.addTopic(topic.Id)
 				if e != nil {
 					log.Printf("添加帖子 %d 失败: %s\n", topic.Id, e.Error())
@@ -450,13 +487,16 @@ func (c *Client) doSubscribe(user *User) error {
 	}
 	return nil
 }
-func (c *Client) Subscribe(uid int, status bool) error {
+func (c *Client) Subscribe(uid int, status bool, filter ...string) error {
 	if u, ok := c.users.GetByUid(uid); ok {
 		log.Printf("变更用户 %s(%d) 订阅状态: %v\n", u.Name, u.Id, status)
 		if status {
 			if !u.Subscribed {
 				nu := &u
 				nu.Subscribed = true
+				if len(filter) > 0 {
+					nu.SubFilter = &filter
+				}
 				if e := c.doSubscribe(nu); e != nil {
 					return e
 				}
@@ -501,7 +541,6 @@ func (c *Client) execute(args []string) (string, error) {
 }
 
 func (c *Client) Close() error {
-	c.users.save()
 	c.users.Close()
 	c.cron.Stop()
 	c.root.Close()

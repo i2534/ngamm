@@ -1,8 +1,12 @@
 #!/bin/bash
 
 cmd=$1
-
-dir_work=/app
+dir=$2
+if [ -z "$dir" ]; then
+    dir_work=/app
+else
+    dir_work=$dir
+fi
 dir_np2md=$dir_work/np2md
 dir_data=$dir_work/data
 if [ "$cmd" = "fetch" ]; then
@@ -23,5 +27,8 @@ elif [ "$cmd" = "start" ]; then
     cd $dir_work
     chmod +x main
     export GIN_MODE=release
+    if [ -z "$TOKEN" ]; then
+        export TOKEN=""
+    fi
     ./main -t "$TOKEN" -p 5842 -m data/ngapost2md
 fi

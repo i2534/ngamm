@@ -1,6 +1,6 @@
 function init(hasToken, ngaPostBase) {
     const origin = window.location.origin;
-    const headers = {};
+    const headers = {}, users = {};
     const sorts = { key: 'Id', order: 'desc' };
     const pageSize = 15;
     let lastList = new Date();
@@ -127,18 +127,19 @@ function init(hasToken, ngaPostBase) {
         renderPagination();
     }
 
+    const authors = new Map();
+    const changeSubscribeStatus = (author, subscribed) => {
+        const nss = authors.get(author);
+        if (nss) {
+            nss.forEach(ns => {
+                ns.title = subscribed ? '点击取消订阅' : '点击订阅';
+                ns.classList.remove(subscribed ? 'unsubscribed' : 'subscribed');
+                ns.classList.add(subscribed ? 'subscribed' : 'unsubscribed');
+            });
+        }
+    };
     function renderSubscribe(container) {
-        const authors = new Map();
-        const changeStatus = (author, subscribed) => {
-            const nss = authors.get(author);
-            if (nss) {
-                nss.forEach(ns => {
-                    ns.title = subscribed ? '点击取消订阅' : '点击订阅';
-                    ns.classList.remove(subscribed ? 'unsubscribed' : 'subscribed');
-                    ns.classList.add(subscribed ? 'subscribed' : 'unsubscribed');
-                });
-            }
-        };
+        authors.clear();
         container.querySelectorAll('span.author').forEach(span => {
             const author = span.innerText;
             const ns = document.createElement('span');
@@ -150,19 +151,27 @@ function init(hasToken, ngaPostBase) {
                     if (!confirm(`确认要取消订阅 ${author} ?`)) {
                         return;
                     }
+                    fetch(`${origin}/subscribe/${encodeURIComponent(author)}`, {
+                        headers,
+                        method: 'DELETE'
+                    })
+                        .then(async (r) => {
+                            const data = await r.json();
+                            if (r.ok) {
+                                changeSubscribeStatus(author, !subscribed);
+                            } else {
+                                alert('操作失败', data.error);
+                            }
+                        });
+                } else {
+                    const dialog = document.getElementById('subscribeDialog');
+                    if (dialog) {
+                        document.getElementById('author').value = author;
+                        const user = users[author];
+                        document.getElementById('subFilter').value = (user && user.filter) ? user.filter.join('\n') : '';
+                        dialog.showModal();
+                    }
                 }
-                fetch(`${origin}/subscribe/${encodeURIComponent(author)}`, {
-                    headers,
-                    method: subscribed ? 'DELETE' : 'POST'
-                })
-                    .then(async (r) => {
-                        const data = await r.json();
-                        if (r.ok) {
-                            changeStatus(author, !subscribed);
-                        } else {
-                            alert('操作失败', data.error);
-                        }
-                    });
             });
             span.insertAdjacentElement('afterend', ns);
             let nss = authors.get(author);
@@ -183,8 +192,9 @@ function init(hasToken, ngaPostBase) {
         }).then(async (r) => {
             const data = await r.json();
             if (r.ok) {
-                Object.entries(data).forEach(([author, subscribed]) => {
-                    changeStatus(author, subscribed);
+                Object.entries(data).forEach(([author, info]) => {
+                    users[author] = info;
+                    changeSubscribeStatus(author, info.subscribed);
                 });
             }
         });
@@ -445,6 +455,26 @@ function init(hasToken, ngaPostBase) {
     window.submitSched = submitSched;
     window.closeDialog = closeDialog;
     window.clearInput = (id) => document.getElementById(id).value = '';
+    window.submitSubscribe = async () => {
+        closeDialog();
+        const author = document.getElementById('author').value;
+        const filter = document.getElementById('subFilter').value.split('\n').map(s => s.trim()).filter(s => s.length > 0);
+        try {
+            const response = await fetch(`${origin}/subscribe/${encodeURIComponent(author)}`, {
+                headers,
+                method: 'POST',
+                body: JSON.stringify(filter)
+            });
+            const data = await response.json();
+            if (!response.ok) {
+                throw new Error(data.error);
+            }
+            users[author] = data;
+            changeSubscribeStatus(author, data.subscribed);
+        } catch (error) {
+            alert(error.message);
+        }
+    };
 
     window.addEventListener('load', () => {
         loadAuthToken();
