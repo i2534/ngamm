@@ -4,7 +4,6 @@ import (
 	"encoding/json"
 	"log"
 	"os"
-	"path/filepath"
 	"regexp"
 	"strconv"
 	"strings"
@@ -33,7 +32,7 @@ type DownResult struct {
 }
 
 type Topic struct {
-	root     string
+	root     *ExtRoot
 	modAt    CustomTime
 	timers   *SyncMap[time.Duration, *time.Timer]
 	Id       int
@@ -46,7 +45,7 @@ type Topic struct {
 	Result   DownResult
 }
 
-func NewTopic(root string, id int) *Topic {
+func NewTopic(root *ExtRoot, id int) *Topic {
 	return &Topic{
 		root:     root,
 		timers:   NewSyncMap[time.Duration, *time.Timer](),
@@ -55,16 +54,20 @@ func NewTopic(root string, id int) *Topic {
 	}
 }
 
-func LoadTopic(root string, id int) (*Topic, error) {
-	dir := filepath.Join(filepath.Clean(root), strconv.Itoa(id))
-	log.Printf("从 %s 加载帖子\n", dir)
+func LoadTopic(root *ExtRoot, id int) (*Topic, error) {
+	r, e := root.OpenRoot(strconv.Itoa(id))
+	if e != nil {
+		return nil, e
+	}
 
+	log.Printf("从 %s 加载帖子\n", r.Name())
+
+	dir := &ExtRoot{r}
 	topic := NewTopic(dir, id)
 
-	content := filepath.Join(dir, POST_MARKDOWN)
-	if IsExist(content) {
+	if dir.IsExist(POST_MARKDOWN) {
 		re := regexp.MustCompile(`\\<pid:0\\>\s+(\d{4}-\d{2}-\d{2}\s+\d{2}:\d{2}:\d{2})\s+by\s+(.+)\s*<`)
-		e := ReadLine(content, func(line string, i int) bool {
+		if e := dir.EveryLine(POST_MARKDOWN, func(line string, i int) bool {
 			if i == 0 {
 				topic.Title = strings.TrimLeft(line, "# ")
 			} else {
@@ -82,26 +85,29 @@ func LoadTopic(root string, id int) (*Topic, error) {
 				}
 			}
 			return true
-		})
-		if e != nil {
+		}); e != nil {
 			return nil, e
 		}
 		if topic.Title == "" {
 			log.Printf("帖子 %d 中未找到标题", id)
 		}
 	} else {
-		log.Printf("在目录 %s 中未找到 %s", dir, POST_MARKDOWN)
+		log.Printf("在目录 %s 中未找到 %s", dir.Name(), POST_MARKDOWN)
 	}
 
-	pd, e := ini.Load(filepath.Join(dir, PROCESS_INI))
+	pd, e := dir.ReadAll(PROCESS_INI)
+	if e != nil {
+		return nil, e
+	}
+	pi, e := ini.Load(pd)
 	if e == nil {
-		sec := pd.Section("local")
+		sec := pi.Section("local")
 		topic.MaxPage = sec.Key("max_page").MustInt(1)
 		topic.MaxFloor = sec.Key("max_floor").MustInt(-1)
 	}
 
 	md := new(Metadata)
-	jd, e := os.ReadFile(filepath.Join(dir, METADATA_JSON))
+	jd, e := dir.ReadAll(METADATA_JSON)
 	if e != nil {
 		if os.IsNotExist(e) {
 			log.Println("未找到帖子的元数据", id)
@@ -120,20 +126,17 @@ func LoadTopic(root string, id int) (*Topic, error) {
 
 func (t *Topic) Save() error {
 	dir := t.root
+	dir.Mkdir(".", 0755)
 
-	os.MkdirAll(dir, 0755)
-
-	md := filepath.Join(dir, METADATA_JSON)
 	data, e := json.MarshalIndent(t.Metadata, "", "  ")
 	if e != nil {
 		return e
 	}
-	return os.WriteFile(md, data, 0644)
+	return dir.WriteAll(METADATA_JSON, data, 0644)
 }
 
 func (t *Topic) Content() (string, error) {
-	md := filepath.Join(t.root, POST_MARKDOWN)
-	data, e := os.ReadFile(md)
+	data, e := t.root.ReadAll(POST_MARKDOWN)
 	if e != nil {
 		return "", e
 	}

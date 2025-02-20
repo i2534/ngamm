@@ -73,4 +73,8 @@ func TestRootIsExist(t *testing.T) {
 	if e := root.IsExist("xxx"); e {
 		t.Fatal(e)
 	}
+
+	if e := root.IsExist("assets/home.html"); !e {
+		t.Fatal(e)
+	}
 }

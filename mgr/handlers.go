@@ -154,7 +154,14 @@ func (srv *Server) addTopic(id int) error {
 		return fmt.Errorf("帖子已存在")
 	}
 
-	topic := NewTopic(filepath.Join(cache.topicRoot, strconv.Itoa(id)), id)
+	r, e := cache.topicRoot.OpenRoot(strconv.Itoa(id))
+	if e != nil {
+		return e
+	}
+
+	log.Printf("从 %s 加载帖子\n", r.Name())
+
+	topic := NewTopic(&ExtRoot{r}, id)
 	topic.Create = Now()
 	topic.Metadata.UpdateCron = DEFAULT_CRON
 
@@ -227,28 +234,32 @@ func (srv *Server) topicDel() func(c *gin.Context) {
 		go func() {
 			log.Println("删除帖子", id)
 			topic.Stop()
-			dir := topic.root
-			if dir != "" {
-				recycles := filepath.Join(cache.topicRoot, DIR_RECYCLE_BIN)
-				if e := os.MkdirAll(recycles, 0755); e != nil {
-					log.Println("创建回收站失败:", recycles, e)
+			dir, e := topic.root.AbsPath(".")
+			if e != nil {
+				log.Println("获取帖子绝对路径失败:", e)
+				return
+			}
+			recycles, e := cache.topicRoot.AbsPath(DIR_RECYCLE_BIN)
+			if e != nil {
+				log.Println("获取回收站绝对路径失败:", e)
+				return
+			}
+			if e := os.MkdirAll(recycles, 0755); e != nil {
+				log.Println("创建回收站失败:", recycles, e)
 
-					log.Println("删除帖子:", dir)
-					if e := os.RemoveAll(dir); e != nil {
-						log.Println("删除帖子失败:", dir, e)
-					}
-				} else {
-					log.Println("移动帖子到回收站:", dir)
-					tar := filepath.Join(recycles, strconv.Itoa(id))
-					os.RemoveAll(tar) // remove old
-					if e := os.Rename(dir, tar); e != nil {
-						log.Println("移动帖子到回收站失败:", dir, e)
-					} else {
-						os.WriteFile(filepath.Join(tar, DELETE_FLAG), []byte(time.Now().Format(time.RFC3339)), 0644)
-					}
+				log.Println("删除帖子:", dir)
+				if e := os.RemoveAll(dir); e != nil {
+					log.Println("删除帖子失败:", dir, e)
 				}
 			} else {
-				log.Println("没有帖子需要删除")
+				log.Println("移动帖子到回收站:", dir)
+				tar := filepath.Join(recycles, strconv.Itoa(id))
+				os.RemoveAll(tar) // remove old
+				if e := os.Rename(dir, tar); e != nil {
+					log.Println("移动帖子到回收站失败:", dir, e)
+				} else {
+					os.WriteFile(filepath.Join(tar, DELETE_FLAG), []byte(time.Now().Format(time.RFC3339)), 0644)
+				}
 			}
 		}()
 
@@ -354,19 +365,17 @@ func (srv *Server) viewTopicRes() func(c *gin.Context) {
 			return
 		}
 
-		// 确保文件路径在 root 目录下, 防止路径穿越
-		file := filepath.Join(topic.root, filepath.Clean(name))
-		if !strings.HasPrefix(file, topic.root) {
-			c.String(http.StatusBadRequest, "非法文件名")
-			return
-		}
-
-		data, e := os.ReadFile(file)
+		data, e := topic.root.Open(name)
 		if e != nil {
 			c.String(http.StatusInternalServerError, "读取资源失败")
 			return
 		}
-		c.Data(http.StatusOK, ContentType(name), data)
+		defer data.Close()
+		size := int64(-1)
+		if info, e := data.Stat(); e == nil {
+			size = info.Size()
+		}
+		c.DataFromReader(http.StatusOK, size, ContentType(name), data, nil)
 	}
 }
 
@@ -384,8 +393,12 @@ func (srv *Server) replayAttachment(c *gin.Context, name string, topic *Topic) {
 	}
 	log.Println("附件来源", src)
 	ext := filepath.Ext(src)
-	dir := filepath.Join(topic.root, ATTACH_DIR)
-	os.MkdirAll(dir, os.ModePerm)
+	topic.root.Mkdir(ATTACH_DIR, 0644)
+	dir, e := topic.root.AbsPath(ATTACH_DIR)
+	if e != nil {
+		c.String(http.StatusInternalServerError, "获取附件目录失败")
+		return
+	}
 	fn := name[:i] + "_" + ShortSha1(src) + ext
 	file := filepath.Join(dir, fn)
 	if IsExist(file) {
@@ -459,7 +472,12 @@ func (srv *Server) replaySmile(c *gin.Context, name string) {
 			c.String(http.StatusInternalServerError, "解析内嵌的 smiles.json 失败")
 			return
 		} else {
-			smile.root = filepath.Clean(filepath.Join(cache.topicRoot, SMILE_DIR))
+			dir, e := cache.topicRoot.AbsPath(SMILE_DIR)
+			if e != nil {
+				c.String(http.StatusInternalServerError, "获取表情目录失败")
+				return
+			}
+			smile.root = dir
 			cache.smile = smile
 		}
 	}

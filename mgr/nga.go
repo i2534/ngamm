@@ -37,12 +37,6 @@ type User struct {
 	bootSubTask     *time.Timer  // 启动后准备订阅任务的定时器
 }
 
-type byUid []User
-
-func (a byUid) Len() int           { return len(a) }
-func (a byUid) Swap(i, j int)      { a[i], a[j] = a[j], a[i] }
-func (a byUid) Less(i, j int) bool { return a[i].Id < a[j].Id }
-
 type users struct {
 	root *ExtRoot
 	lock *sync.RWMutex
@@ -237,10 +231,8 @@ func isEnclosed(s string, start, end rune) bool {
 	return rune(s[0]) == start && rune(s[len(s)-1]) == end
 }
 
-func (c *Client) GetRoot() string {
-	//FIXME change it
-	p, _ := c.root.AbsPath(".")
-	return p
+func (c *Client) GetRoot() *ExtRoot {
+	return c.root
 }
 
 func (c *Client) GetVersion() string {

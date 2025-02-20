@@ -43,18 +43,19 @@ type Config struct {
 
 type cache struct {
 	lock      *sync.RWMutex
-	topicRoot string
+	topicRoot *ExtRoot
 	loaded    bool                  // topics already loaded
 	topics    *SyncMap[int, *Topic] // all topics
 	queue     chan int              // adding or update topic id
 	smile     *Smile
 }
 
-func (c *cache) close() {
+func (c *cache) Close() error {
 	c.topics.EAC(func(_ int, topic *Topic) {
 		topic.Stop()
 	})
 	close(c.queue)
+	return c.topicRoot.Close()
 }
 
 type Server struct {
@@ -106,6 +107,11 @@ func formatTimestamp(timestamp time.Time) string {
 }
 
 func NewServer(cfg *Config, nga *Client) (*Server, error) {
+	tr, e := nga.GetRoot().OpenRoot(DIR_TOPIC_ROOT)
+	if e != nil {
+		return nil, e
+	}
+
 	engine := gin.New()
 	engine.Use(gin.LoggerWithFormatter(customLogFormatter), gin.Recovery())
 
@@ -122,7 +128,7 @@ func NewServer(cfg *Config, nga *Client) (*Server, error) {
 		cache: &cache{
 			lock:      &sync.RWMutex{},
 			queue:     make(chan int, QUEUE_SIZE),
-			topicRoot: filepath.Join(nga.GetRoot(), DIR_TOPIC_ROOT),
+			topicRoot: &ExtRoot{Root: tr},
 		},
 	}
 
@@ -152,8 +158,7 @@ func (srv *Server) loadTopics() {
 		return
 	}
 
-	dir := cache.topicRoot
-	files, e := os.ReadDir(dir)
+	files, e := cache.topicRoot.ReadDir(".")
 	if e != nil {
 		log.Println("读取帖子根目录失败:", e)
 	} else {
@@ -169,7 +174,7 @@ func (srv *Server) loadTopics() {
 				continue
 			}
 
-			topic, e := LoadTopic(dir, id)
+			topic, e := LoadTopic(cache.topicRoot, id)
 			if e != nil {
 				log.Println("加载帖子失败:", e)
 				continue
@@ -200,7 +205,11 @@ func (srv *Server) loadTopics() {
 
 func (srv *Server) checkRecycleBin() {
 	log.Println("检查回收站...")
-	recycles := filepath.Join(srv.cache.topicRoot, DIR_RECYCLE_BIN)
+	recycles, e := srv.cache.topicRoot.AbsPath(DIR_RECYCLE_BIN)
+	if e != nil {
+		log.Println("获取回收站绝对路径失败:", e)
+		return
+	}
 	files, e := os.ReadDir(recycles)
 	if e != nil {
 		log.Println("读取回收站失败:", e)
@@ -268,24 +277,20 @@ func (srv *Server) process() {
 		// 先检查 process.ini, assets.json 存在与否, 如果文件夹存在但文件不存在, ngapost2md 会认为其是无效的帖子, 不予更新
 		dir := old.root
 		// 创建文件夹, 防止因为异步导致文件夹在判断 process.ini, assets.json 之后被创建, 然后导致 ngapost2md 无法更新
-		os.MkdirAll(dir, 0755)
+		dir.Mkdir(".", 0755)
 
-		if IsExist(dir) {
-			ini := filepath.Join(dir, PROCESS_INI)
-			if !IsExist(ini) {
-				// log.Println("No process.ini found for topic, create it...")
+		if dir.IsExist(".") {
+			if !dir.IsExist(PROCESS_INI) {
 				data := `[local]
 max_page = 1
 max_floor = -1`
-				if e := os.WriteFile(ini, []byte(data), 0644); e != nil {
+				if e := dir.WriteAll(PROCESS_INI, []byte(data), 0644); e != nil {
 					log.Println("创建 process.ini 失败:", e)
 				}
 			}
-			aj := filepath.Join(dir, ASSETSA_JSON)
-			if !IsExist(aj) {
-				// log.Println("No assets.json found for topic, create it...")
+			if !dir.IsExist(ASSETSA_JSON) {
 				data := "{}"
-				if e := os.WriteFile(aj, []byte(data), 0644); e != nil {
+				if e := dir.WriteAll(ASSETSA_JSON, []byte(data), 0644); e != nil {
 					log.Println("创建 assets.json 失败:", e)
 				}
 			}
@@ -394,7 +399,7 @@ func (srv *Server) Stop() {
 	srv.stopped = true
 
 	srv.cron.Stop()
-	srv.cache.close()
+	srv.cache.Close()
 	srv.nga.Close()
 
 	close(srv.stopChan)

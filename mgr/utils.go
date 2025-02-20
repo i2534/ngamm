@@ -93,6 +93,43 @@ func (r *ExtRoot) IsExist(name string) bool {
 	}
 	return true
 }
+func (r *ExtRoot) EveryLine(name string, fx func(string, int) bool) error {
+	f, e := r.Open(name)
+	if e != nil {
+		return e
+	}
+	defer f.Close()
+
+	scanner := bufio.NewScanner(f)
+	i := 0
+	for scanner.Scan() {
+		if !fx(scanner.Text(), i) {
+			return nil
+		}
+		i++
+	}
+	if e := scanner.Err(); e != nil {
+		return e
+	}
+	return nil
+}
+func (r *ExtRoot) ReadAll(name string) ([]byte, error) {
+	f, e := r.Open(name)
+	if e != nil {
+		return nil, e
+	}
+	defer f.Close()
+	return io.ReadAll(f)
+}
+func (r *ExtRoot) WriteAll(name string, data []byte, perm os.FileMode) error {
+	f, e := r.OpenFile(name, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, perm)
+	if e != nil {
+		return e
+	}
+	defer f.Close()
+	_, e = f.Write(data)
+	return e
+}
 
 func IsExist(path string) bool {
 	if _, e := os.Stat(path); os.IsNotExist(e) {
