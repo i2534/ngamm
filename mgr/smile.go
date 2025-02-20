@@ -87,7 +87,7 @@ func (s *Smile) URL(name string) string {
 func (s *Smile) Local(name, ua string) ([]byte, error) {
 	v := s.find(name)
 	if v == nil {
-		return nil, fmt.Errorf("smile %s not found", name)
+		return nil, fmt.Errorf("未找到表情 %s", name)
 	}
 	d := v.data.Load()
 	if d != nil {
@@ -97,14 +97,14 @@ func (s *Smile) Local(name, ua string) ([]byte, error) {
 	if IsExist(path) {
 		data, e := os.ReadFile(path)
 		if e != nil {
-			return nil, fmt.Errorf("failed to read smile %s: %w", name, e)
+			return nil, fmt.Errorf("读取表情 %s 失败: %w", name, e)
 		}
 		v.data.Store(data)
 		return data, nil
 	}
 
 	if s.failed.Has(name) {
-		return nil, fmt.Errorf("failed to download smile %s", name)
+		return nil, fmt.Errorf("下载表情 %s 失败", name)
 	}
 
 	url := s.URL(name)
@@ -123,31 +123,31 @@ func (s *Smile) Local(name, ua string) ([]byte, error) {
 func (s *Smile) fetch(path, url, ua string) error {
 	req, e := http.NewRequest(http.MethodGet, url, nil)
 	if e != nil {
-		return fmt.Errorf("failed to create request: %w", e)
+		return fmt.Errorf("创建请求失败: %w", e)
 	}
 	req.Header.Set("User-Agent", ua)
 
 	resp, e := DoHttp(req)
 	if e != nil {
-		return fmt.Errorf("failed to download smile %s: %w", url, e)
+		return fmt.Errorf("下载表情 %s 失败: %w", url, e)
 	}
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
-		return fmt.Errorf("failed to download smile %s: status code %d", url, resp.StatusCode)
+		return fmt.Errorf("下载表情 %s 失败, 状态码: %d", url, resp.StatusCode)
 	}
 
 	os.MkdirAll(s.root, os.ModePerm)
 	file, e := os.Create(path)
 	if e != nil {
-		return fmt.Errorf("failed to create file: %w", e)
+		return fmt.Errorf("创建表情文件失败: %w", e)
 	}
 	defer file.Close()
 
 	_, e = io.Copy(file, resp.Body)
 	if e != nil {
-		return fmt.Errorf("failed to save image: %w", e)
+		return fmt.Errorf("保存表情图片失败: %w", e)
 	}
-	log.Printf("Downloaded smile %s to %s\n", url, path)
+	log.Printf("下载表情 %s 到 %s\n", url, path)
 	return nil
 }

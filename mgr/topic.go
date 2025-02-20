@@ -57,7 +57,7 @@ func NewTopic(root string, id int) *Topic {
 
 func LoadTopic(root string, id int) (*Topic, error) {
 	dir := filepath.Join(filepath.Clean(root), strconv.Itoa(id))
-	log.Printf("Loading topic %d from %s\n", id, dir)
+	log.Printf("从 %s 加载帖子\n", dir)
 
 	topic := NewTopic(dir, id)
 
@@ -72,7 +72,7 @@ func LoadTopic(root string, id int) (*Topic, error) {
 				if m != nil {
 					t, e := time.Parse("2006-01-02 15:04:05", m[1])
 					if e != nil {
-						log.Println("Failed to parse time:", m[1], e)
+						log.Println("解析时间失败:", m[1], e)
 						return false
 					}
 
@@ -87,10 +87,10 @@ func LoadTopic(root string, id int) (*Topic, error) {
 			return nil, e
 		}
 		if topic.Title == "" {
-			log.Printf("Not found title in  %s at dir: %s", POST_MARKDOWN, dir)
+			log.Printf("帖子 %d 中未找到标题", id)
 		}
 	} else {
-		log.Printf("Not found %s at dir: %s", POST_MARKDOWN, dir)
+		log.Printf("在目录 %s 中未找到 %s", dir, POST_MARKDOWN)
 	}
 
 	pd, e := ini.Load(filepath.Join(dir, PROCESS_INI))
@@ -104,12 +104,12 @@ func LoadTopic(root string, id int) (*Topic, error) {
 	jd, e := os.ReadFile(filepath.Join(dir, METADATA_JSON))
 	if e != nil {
 		if os.IsNotExist(e) {
-			log.Println("No metadata found for topic", id)
+			log.Println("未找到帖子的元数据", id)
 		} else {
-			log.Println("Failed to read metadata:", e)
+			log.Println("读取帖子元数据失败:", e)
 		}
 	} else if e := json.Unmarshal(jd, md); e != nil {
-		log.Println("Failed to parse metadata:", e)
+		log.Println("解析帖子元数据失败:", e)
 	}
 	topic.Metadata = md
 

@@ -1,5 +1,5 @@
 {
-  "image": "mcr.microsoft.com/devcontainers/universal:2",
+  "image": "mcr.microsoft.com/devcontainers/base:ubuntu-22.04",
   "features": {},
   "customizations": {
     "vscode": {
@@ -15,8 +15,14 @@
         "workbench.editor.enablePreview": false,
         "editor.fontFamily": "'JetBrains Mono', 'Microsoft YaHei Mono', Consolas, 'Courier New', monospace",
         "editor.formatOnSave": true,
-        "editor.fontSize": 16
+        "editor.fontSize": 16,
+        "go.goroot": "~/.g/go",
+        "go.testFlags": [
+          "-v"
+        ]
       }
     }
-  }
+  },
+  "postCreateCommand": "curl -sSL https://raw.githubusercontent.com/voidint/g/master/install.sh | bash && . ~/.g/env && g install latest",
+  "postStartCommand": ". ~/.g/env"
 }

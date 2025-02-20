@@ -155,7 +155,7 @@ func (srv *Server) loadTopics() {
 	dir := cache.topicRoot
 	files, e := os.ReadDir(dir)
 	if e != nil {
-		log.Println("Failed to read topic root dir:", e)
+		log.Println("读取帖子根目录失败:", e)
 	} else {
 		cache.topics = NewSyncMap[int, *Topic]()
 		for _, file := range files {
@@ -165,13 +165,13 @@ func (srv *Server) loadTopics() {
 			name := file.Name()
 			id, e := strconv.Atoi(name)
 			if e != nil {
-				log.Println("It's not topic dir:", name)
+				log.Println("不是帖子目录:", name)
 				continue
 			}
 
 			topic, e := LoadTopic(dir, id)
 			if e != nil {
-				log.Println("Failed to load topic:", e)
+				log.Println("加载帖子失败:", e)
 				continue
 			}
 
@@ -182,9 +182,9 @@ func (srv *Server) loadTopics() {
 				d := time.Until(next)
 				if d > time.Minute*30 {
 					d = time.Duration(rand.Int64N(int64(d) / 2))
-					log.Println("Random update topic", id, "in", d)
+					log.Println("随机更新帖子", id, "在", d, "后")
 					timer := time.AfterFunc(d, func() {
-						log.Println("Random update topic", id)
+						log.Println("随机更新帖子", id)
 						cache.queue <- id
 						topic.timers.Delete(d)
 					})
@@ -193,17 +193,17 @@ func (srv *Server) loadTopics() {
 			}
 		}
 
-		log.Println("Loaded", cache.topics.Size(), "topics")
+		log.Println("已加载", cache.topics.Size(), "个帖子")
 	}
 	cache.loaded = true
 }
 
 func (srv *Server) checkRecycleBin() {
-	log.Println("Checking recycle bin...")
+	log.Println("检查回收站...")
 	recycles := filepath.Join(srv.cache.topicRoot, DIR_RECYCLE_BIN)
 	files, e := os.ReadDir(recycles)
 	if e != nil {
-		log.Println("Failed to read recycle bin:", e)
+		log.Println("读取回收站失败:", e)
 		return
 	}
 	for _, file := range files {
@@ -214,18 +214,18 @@ func (srv *Server) checkRecycleBin() {
 		tar := filepath.Join(recycles, name)
 		data, e := os.ReadFile(filepath.Join(tar, DELETE_FLAG))
 		if e != nil {
-			log.Println("Failed to read ", DELETE_FLAG, e)
+			log.Println("读取", DELETE_FLAG, "失败:", e)
 			continue
 		}
 		t, e := time.Parse(time.RFC3339, string(data))
 		if e != nil {
-			log.Println("Failed to parse ", DELETE_FLAG, e)
+			log.Println("解析", DELETE_FLAG, "失败:", e)
 			continue
 		}
 		if time.Since(t).Hours() > float64(DELETE_TIME) {
-			log.Println("Removing recycle topic", name)
+			log.Println("删除回收站帖子", name)
 			if e := os.RemoveAll(tar); e != nil {
-				log.Println("Failed to remove recycle topic:", e)
+				log.Println("删除回收站帖子失败:", e)
 			}
 		}
 	}
@@ -235,13 +235,13 @@ func (srv *Server) addCron(topic *Topic) time.Time {
 	md := topic.Metadata
 	uc := md.UpdateCron
 	if uc != "" {
-		log.Println("Adding cron job for topic", topic.Id, ":", uc)
+		log.Println("为帖子添加定时任务", topic.Id, ":", uc)
 		id, e := srv.cron.AddFunc(uc, func() {
-			log.Println("Add process task for topic", topic.Id)
+			log.Println("为帖子添加处理任务", topic.Id)
 			srv.cache.queue <- topic.Id
 		})
 		if e != nil {
-			log.Println("Failed to add cron job:", e)
+			log.Println("添加定时任务失败:", e)
 		} else {
 			srv.cron.Remove(md.updateCronId)
 			md.updateCronId = id
@@ -257,11 +257,11 @@ func (srv *Server) addCron(topic *Topic) time.Time {
 func (srv *Server) process() {
 	cache := srv.cache
 	for id := range cache.queue {
-		log.Println("Processing topic", id)
+		log.Println("处理帖子", id)
 
 		old, has := cache.topics.Get(id)
 		if !has {
-			log.Println("Topic not found, is it deleted ?")
+			log.Println("未找到帖子，是否已删除？")
 			continue
 		}
 
@@ -278,7 +278,7 @@ func (srv *Server) process() {
 max_page = 1
 max_floor = -1`
 				if e := os.WriteFile(ini, []byte(data), 0644); e != nil {
-					log.Println("Failed to create process.ini:", e)
+					log.Println("创建 process.ini 失败:", e)
 				}
 			}
 			aj := filepath.Join(dir, ASSETSA_JSON)
@@ -286,7 +286,7 @@ max_floor = -1`
 				// log.Println("No assets.json found for topic, create it...")
 				data := "{}"
 				if e := os.WriteFile(aj, []byte(data), 0644); e != nil {
-					log.Println("Failed to create assets.json:", e)
+					log.Println("创建 assets.json 失败:", e)
 				}
 			}
 		}
@@ -295,7 +295,7 @@ max_floor = -1`
 		if ok {
 			topic, e := LoadTopic(cache.topicRoot, id)
 			if e != nil {
-				log.Println("Failed to load topic:", e)
+				log.Println("加载帖子失败:", e)
 			} else {
 				topic.Result = DownResult{
 					Success: true,
@@ -321,9 +321,9 @@ max_floor = -1`
 						mrc = DEFAULT_MAX_RETRY
 					}
 					md.retryCount += 1
-					log.Println("Failed count:", md.retryCount)
+					log.Println("失败次数:", md.retryCount)
 					if md.retryCount >= mrc {
-						log.Printf("Max retry count reached (%d) for topic %d\n", md.retryCount, id)
+						log.Printf("帖子失败次数 %d 达到最大重试次数 (%d)\n", id, md.retryCount)
 						srv.cron.Remove(md.updateCronId)
 						md.updateCronId = 0
 					}
@@ -351,10 +351,10 @@ func (srv *Server) getTopics(username string) []*Topic {
 func (srv *Server) Run() {
 	go func() {
 		if e := srv.Raw.ListenAndServe(); e != nil && e != http.ErrServerClosed {
-			log.Fatalf("Listen failed: %s\n", e)
+			log.Fatalf("监听失败: %s\n", e)
 		}
 	}()
-	log.Println("Server started, listening on", srv.Cfg.Addr)
+	log.Println("服务器已启动，监听端口", srv.Cfg.Addr)
 
 	srv.cron.AddFunc("@every 12h", srv.checkRecycleBin)
 	srv.cron.Start()
@@ -367,9 +367,9 @@ func (srv *Server) Run() {
 
 	select {
 	case <-quit:
-		log.Println("Received OS interrupt signal")
+		log.Println("收到操作系统中断信号")
 	case <-srv.stopChan:
-		log.Println("Received stop signal")
+		log.Println("收到停止信号")
 	}
 
 	srv.Stop()
@@ -377,13 +377,13 @@ func (srv *Server) Run() {
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 	if e := srv.Raw.Shutdown(ctx); e != nil {
-		log.Fatal("Server forced to shutdown:", e)
+		log.Fatal("服务器强制关闭:", e)
 	}
-	log.Println("Server exiting")
+	log.Println("服务器已退出")
 }
 
 func (srv *Server) Stop() {
-	log.Println("Stopping server...")
+	log.Println("正在停止服务器...")
 
 	srv.stopLock.Lock()
 	defer srv.stopLock.Unlock()
@@ -399,5 +399,5 @@ func (srv *Server) Stop() {
 
 	close(srv.stopChan)
 
-	log.Println("Server stopped")
+	log.Println("服务器已停止")
 }
