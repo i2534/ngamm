@@ -100,7 +100,7 @@ function init(hasToken, ngaPostBase) {
         const rows = paginated.map(topic => `
         <tr>
             <td><a href="${ngaPostBase}${topic.Id}" target="_blank">${topic.Id}</a></td>
-            <td>${topic.Title}</td>
+            <td><span class="title" title="${topic.Title}">${topic.Title}</span></td>
             <td><span class="author">${topic.Author}</span></td>
             <td>${topic.MaxFloor}</td>
             <td><span class="update-${topic.Result.Success ? 'success' : 'failed'}">${topic.Result.Time}</span></td>
@@ -132,7 +132,8 @@ function init(hasToken, ngaPostBase) {
         const nss = authors.get(author);
         if (nss) {
             nss.forEach(ns => {
-                ns.title = subscribed ? '点击取消订阅' : '点击订阅';
+                const filter = ((users[author] || {}).filter || []).join('\n\t');
+                ns.title = subscribed ? `点击取消订阅${(filter && filter.length) ? '\n  过滤规则:\n\t' + filter : ''}` : '点击订阅';
                 ns.classList.remove(subscribed ? 'unsubscribed' : 'subscribed');
                 ns.classList.add(subscribed ? 'subscribed' : 'unsubscribed');
             });

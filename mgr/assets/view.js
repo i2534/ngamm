@@ -40,12 +40,18 @@ function render(ngaBase, id, token, content) {
                 })
         },
     };
+    function fixSrc(src) {
+        if (src && src.startsWith('./')) {
+            return baseUrl + src.substring(2);
+        }
+        return src;
+    }
     function makeMedia(src, name, title, poster) {
         const ext = name.split('.').pop().toLowerCase();
         if (['mp4', 'webm', 'ogg'].includes(ext)) {
             return makeVideo(src, title, poster);
         } else {
-            return `<img ${attrSrc}="${src}" alt="${title}" title="${title}" onerror="tryReloadImage(this)">`;
+            return `<img ${attrSrc}="${fixSrc(src)}" alt="${title}" title="${title}" onerror="tryReloadImage(this)">`;
         }
     }
     function makeLink(href, text, title) {
@@ -53,15 +59,15 @@ function render(ngaBase, id, token, content) {
         if (!href.startsWith('#')) {
             target = ' target="_blank"';
         }
-        return `<a href="${href}" title="${title || text}"${target}>${text === 'url' ? href : text}</a>`;
+        return `<a href="${fixSrc(href)}" title="${title || text}"${target}>${text === 'url' ? href : text}</a>`;
     }
     function makeVideo(src, title, poster) {
         let extra = '';
         if (title && title !== '') {
             extra += ` title="${title}"`;
         }
-        extra += ` ${attrPoster}="${poster || ''}"`;
-        return `<video ${attrSrc}="${src}"${extra} controls onerror="tryReloadVideo(this)"></video>`;
+        extra += ` ${attrPoster}="${fixSrc(poster || '')}"`;
+        return `<video ${attrSrc}="${fixSrc(src)}"${extra} controls onerror="tryReloadVideo(this)"></video>`;
     }
 
     const extensions = [{
@@ -193,9 +199,13 @@ function render(ngaBase, id, token, content) {
     }
     // 处理因为包裹在 html 标签内导致的无法被 marked 处理的链接
     function fixLink(html) {
-        return html.replace(/\[(.+?)\]\((.+?)\)/g, (_, text, src) => {
-            return makeLink(src, text);
-        });
+        return html
+            .replace(/\!\[(.+?)\]\((.+?)\)/g, (_, text, src) => {
+                return makeMedia(src, src, text);
+            })
+            .replace(/\[(.+?)\]\((.+?)\)/g, (_, text, src) => {
+                return makeLink(src, text);
+            });
     }
     // 修正表情
     function fixEmoji(html) {
@@ -204,6 +214,7 @@ function render(ngaBase, id, token, content) {
 
     window.tryReloadImage = tryReloadImage;
     window.tryReloadVideo = tryReloadVideo;
+    window.collapse = () => { }; //阻止残留的报错: <div class="foldBox no"><div class="collapse_btn"><a href="javascript:;" onclick="collapse(this);">+</a>点击展开 ...</div>
 
     window.jumpToFloor = function () {
         const floor = document.querySelector('#floorInput').value.trim();
