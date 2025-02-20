@@ -19,7 +19,7 @@ var (
 
 type Option struct {
 	Port    int    `short:"p" long:"port" description:"端口号" default:"5842"`
-	Program string `short:"m" long:"program" description:"ngapost2md 程序路径" default:"ngapost2md/ngapost2md"`
+	Program string `short:"m" long:"program" description:"ngapost2md 程序路径, 相对于主程序" default:"ngapost2md/ngapost2md"`
 	Token   string `short:"t" long:"token" description:"设置一个简单的访问令牌, 如果不设置则不需要令牌"`
 	Smile   string `short:"s" long:"smile" description:"表情配置:\nlocal: 使用本地缓存(如果没有则自动下载)\nweb: 使用远程(即NGA服务器上的)\n" default:"local"`
 	Version bool   `short:"v" long:"version" description:"显示版本信息"`
@@ -58,7 +58,7 @@ func main() {
 	log.Printf("NGAMM 版本: %s @ %s\n", gitHash, buildTime)
 
 	program := filepath.Join(wd, opts.Program)
-	if _, e := os.Stat(program); os.IsNotExist(e) {
+	if !mgr.IsExist(program) {
 		log.Fatalln("ngapost2md 程序文件不存在:", program)
 	}
 

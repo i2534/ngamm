@@ -5,6 +5,8 @@ import (
 	"crypto/sha1"
 	"encoding/json"
 	"fmt"
+	"io"
+	"io/fs"
 	"mime"
 	"net/http"
 	"os"
@@ -58,6 +60,40 @@ func Local() *time.Location {
 	return as
 }
 
+type ExtRoot struct {
+	*os.Root
+}
+
+func OpenRoot(path string) (*ExtRoot, error) {
+	r, e := os.OpenRoot(path)
+	if e != nil {
+		return nil, e
+	}
+	return &ExtRoot{Root: r}, nil
+}
+func (r *ExtRoot) ReadDir(name string) ([]fs.DirEntry, error) {
+	f, e := r.Open(name)
+	if e != nil {
+		return nil, e
+	}
+	defer f.Close()
+	return f.ReadDir(-1)
+}
+func (r *ExtRoot) AbsPath(name string) (string, error) {
+	f, e := r.Open(name)
+	if e != nil {
+		return "", e
+	}
+	defer f.Close()
+	return filepath.Abs(f.Name())
+}
+func (r *ExtRoot) IsExist(name string) bool {
+	if _, e := r.Stat(name); os.IsNotExist(e) {
+		return false
+	}
+	return true
+}
+
 func IsExist(path string) bool {
 	if _, e := os.Stat(path); os.IsNotExist(e) {
 		return false
@@ -65,21 +101,24 @@ func IsExist(path string) bool {
 	return true
 }
 
+func GBKReadAll(r io.Reader) ([]byte, error) {
+	decoder := simplifiedchinese.GBK.NewDecoder()
+	reader := transform.NewReader(r, decoder)
+	return io.ReadAll(reader)
+}
+
 func PathEscapeGBK(s string) (string, error) {
-	// 将字符串转换为 GBK 编码的字节数组
-	gbkEncoder := simplifiedchinese.GBK.NewEncoder()
-	gbkBytes, _, err := transform.Bytes(gbkEncoder, []byte(s))
-	if err != nil {
-		return "", err
+	encoder := simplifiedchinese.GBK.NewEncoder()
+	data, _, e := transform.Bytes(encoder, []byte(s))
+	if e != nil {
+		return "", e
 	}
-
 	// 对 GBK 编码的字节数组进行百分比编码
-	var escaped strings.Builder
-	for _, b := range gbkBytes {
-		escaped.WriteString(fmt.Sprintf("%%%02X", b))
+	var r strings.Builder
+	for _, b := range data {
+		r.WriteString(fmt.Sprintf("%%%02X", b))
 	}
-
-	return escaped.String(), nil
+	return r.String(), nil
 }
 
 func readFile(filePath string, lineHandler func(scanner *bufio.Scanner) error) error {

@@ -1,7 +1,7 @@
 // go.mod file for ngapost2md-mgr
 module github.com/i2534/ngamm
 
-go 1.23
+go 1.24
 
 require (
 	github.com/gin-contrib/gzip v1.0.1

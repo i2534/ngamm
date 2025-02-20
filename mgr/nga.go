@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"io"
 	"log"
 	"math/rand"
 	"net/http"
@@ -20,8 +19,6 @@ import (
 	"time"
 
 	"github.com/robfig/cron/v3"
-	"golang.org/x/text/encoding/simplifiedchinese"
-	"golang.org/x/text/transform"
 	"gopkg.in/ini.v1"
 )
 
@@ -148,7 +145,7 @@ func (u *users) Close() error {
 type Client struct {
 	program string
 	version string
-	root    string
+	root    *ExtRoot
 	cfg     *ini.File
 	ua      string
 	baseURL string
@@ -161,9 +158,13 @@ type Client struct {
 
 func InitNGA(program string) (*Client, error) {
 	dir := filepath.Dir(program)
+	root, e := OpenRoot(dir)
+	if e != nil {
+		return nil, e
+	}
 	client := &Client{
 		program: program,
-		root:    dir,
+		root:    root,
 		users: &users{
 			lock: &sync.RWMutex{},
 			data: make(map[string]User),
@@ -177,12 +178,12 @@ func InitNGA(program string) (*Client, error) {
 	}
 	log.Printf("ngapost2md 版本: %s\n", version)
 	fp := filepath.Join(dir, NGA_CFG)
-	if _, err := os.Stat(fp); os.IsNotExist(err) {
+	if !IsExist(fp) {
 		client.execute([]string{"--gen-config-file"})
 	}
-	cfg, err := ini.Load(fp)
-	if err != nil {
-		return nil, err
+	cfg, e := ini.Load(fp)
+	if e != nil {
+		return nil, e
 	}
 	network := cfg.Section("network")
 	ua := network.Key("ua").String()
@@ -230,7 +231,9 @@ func isEnclosed(s string, start, end rune) bool {
 }
 
 func (c *Client) GetRoot() string {
-	return c.root
+	//FIXME change it
+	p, _ := c.root.AbsPath(".")
+	return p
 }
 
 func (c *Client) GetVersion() string {
@@ -258,9 +261,9 @@ func (c *Client) BaseURL() string {
 }
 
 func (c *Client) DownTopic(tid int) (bool, string) {
-	out, err := c.execute([]string{strconv.Itoa(tid)})
-	if err != nil {
-		log.Printf("下载主题 %d 出现问题: %s\n", tid, err.Error())
+	out, e := c.execute([]string{strconv.Itoa(tid)})
+	if e != nil {
+		log.Printf("下载主题 %d 出现问题: %s\n", tid, e.Error())
 	} else {
 
 		log.Printf("\n%s", out)
@@ -289,43 +292,37 @@ func (c *Client) DownTopic(tid int) (bool, string) {
 func (c *Client) getHTML(url string) (string, error) {
 	req, e := http.NewRequest(http.MethodGet, url, nil)
 	if e != nil {
-		return "", fmt.Errorf("failed to create request: %w", e)
+		return "", fmt.Errorf("创建请求失败: %w", e)
 	}
 	req.Header.Set("User-Agent", c.GetUA())
 	req.Header.Set("Cookie", "ngaPassportUid="+c.uid+"; ngaPassportCid="+c.cid)
 
 	resp, e := DoHttp(req)
 	if e != nil {
-		return "", fmt.Errorf("failed to get %s: %w", url, e)
+		return "", fmt.Errorf("请求 %s 失败: %w", url, e)
 	}
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
-		return "", fmt.Errorf("failed to get %s: status code %d", url, resp.StatusCode)
+		return "", fmt.Errorf("请求 %s 失败, 状态码 %d", url, resp.StatusCode)
 	}
 
-	data, e := io.ReadAll(resp.Body)
+	data, e := GBKReadAll(resp.Body)
 	if e != nil {
-		return "", fmt.Errorf("failed to read response: %w", e)
+		return "", fmt.Errorf("解码响应失败: %w", e)
 	}
-
-	reader := transform.NewReader(bytes.NewReader(data), simplifiedchinese.GBK.NewDecoder())
-	decodedData, e := io.ReadAll(reader)
-	if e != nil {
-		return "", fmt.Errorf("failed to decode response: %w", e)
-	}
-	return string(decodedData), nil
+	return string(data), nil
 }
 
 func (c *Client) GetUser(username string) (User, error) {
 	if u, ok := c.users.Get(username); ok {
 		return u, nil
 	}
-	escaped, e := PathEscapeGBK(username)
+	eun, e := PathEscapeGBK(username)
 	if e != nil {
 		return User{}, e
 	}
-	url := fmt.Sprintf("%s/nuke.php?func=ucp&username=%s", c.baseURL, escaped)
+	url := fmt.Sprintf("%s/nuke.php?func=ucp&username=%s", c.baseURL, eun)
 	html, e := c.getHTML(url)
 	if e != nil {
 		return User{}, e
@@ -334,26 +331,26 @@ func (c *Client) GetUser(username string) (User, error) {
 	// println(html)
 
 	if strings.Contains(html, "找不到用户") {
-		return User{}, fmt.Errorf("user not found")
+		return User{}, fmt.Errorf("未找到用户")
 	}
 
 	re := regexp.MustCompile(`__UCPUSER\s*=(.+)?;`)
 	matches := re.FindStringSubmatch(html)
 	if len(matches) < 2 {
-		return User{}, fmt.Errorf("failed to find user info")
+		return User{}, fmt.Errorf("未匹配到用户信息")
 	}
 	val := strings.TrimSpace(matches[1])
 	if len(val) > 0 {
 		info := make(map[string]any)
 		e := json.Unmarshal([]byte(val), &info)
 		if e != nil {
-			return User{}, fmt.Errorf("failed to parse user info: %s, cause by: %w", val, e)
+			return User{}, fmt.Errorf("解析用户信息 %s 失败: %w", val, e)
 		}
 		uid := int(info["uid"].(float64))
 		ipLoc := info["ipLoc"].(string)
 		regDate := int64(info["regdate"].(float64))
 
-		log.Printf("获取到用户 %s 的 UID: %d\n", username, uid)
+		log.Printf("获取到用户 %s 的 UID %d\n", username, uid)
 
 		u := User{
 			Id:      uid,
@@ -364,7 +361,7 @@ func (c *Client) GetUser(username string) (User, error) {
 		c.users.Put(username, u)
 		return u, nil
 	}
-	return User{}, fmt.Errorf("get empty UID")
+	return User{}, fmt.Errorf("匹配到空的用户信息")
 }
 
 type topicRecord struct {
@@ -386,7 +383,7 @@ func (c *Client) GetUserPost(uid, from int) ([]topicRecord, error) {
 	re := regexp.MustCompile(`<a href='/read.php\?tid=(\d+)' id='(.*?)' class='topic'>(.*?)</a>`)
 	matches := re.FindAllStringSubmatch(html, -1)
 	if len(matches) == 0 {
-		return nil, fmt.Errorf("failed to find user post")
+		return nil, fmt.Errorf("未匹配到用户帖子")
 	}
 	posts := make([]topicRecord, 0)
 	for _, match := range matches {
@@ -480,22 +477,25 @@ func (c *Client) Subscribe(uid int, status bool) error {
 		}
 		return nil
 	}
-	return fmt.Errorf("user not found")
+	return fmt.Errorf("未找到用户")
 }
 
 func (c *Client) execute(args []string) (string, error) {
+	dir, e := c.root.AbsPath(".")
+	if e != nil {
+		return "", e
+	}
 	cmd := exec.Command(c.program, args...)
-	cmd.Dir = c.root
+	cmd.Dir = dir
 	var out bytes.Buffer
 	cmd.Stdout = &out
 	cmd.Stderr = &out
-	err := cmd.Run()
-	if err != nil {
-		if e, ok := err.(*exec.ExitError); ok {
+	if e := cmd.Run(); e != nil {
+		if e, ok := e.(*exec.ExitError); ok {
 			log.Printf("命令执行返回非零退出状态: %s\n", e)
 			return out.String(), nil
 		}
-		return out.String(), err
+		return out.String(), e
 	}
 	return out.String(), nil
 }
@@ -504,5 +504,6 @@ func (c *Client) Close() error {
 	c.users.save()
 	c.users.Close()
 	c.cron.Stop()
+	c.root.Close()
 	return nil
 }
