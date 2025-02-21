@@ -18,11 +18,13 @@ type Metadata struct {
 	updateCronId  cron.EntryID
 	MaxRetryCount int
 	retryCount    int
+	Abandon       bool // 已达到最大重试次数, 放弃更新
 }
 
 func (m *Metadata) Merge(n *Metadata) {
 	m.UpdateCron = n.UpdateCron
 	m.MaxRetryCount = n.MaxRetryCount
+	m.Abandon = n.Abandon
 }
 
 type DownResult struct {

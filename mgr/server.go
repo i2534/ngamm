@@ -181,6 +181,12 @@ func (srv *Server) loadTopics() {
 			}
 
 			cache.topics.Put(id, topic)
+
+			if topic.Metadata.Abandon {
+				log.Printf("帖子 %d 已放弃更新\n", id)
+				continue
+			}
+
 			next := srv.addCron(topic)
 			// 在第一次更新时间段(必须超过30分钟)的一半内随机更新一次
 			if !next.IsZero() {
@@ -244,7 +250,11 @@ func (srv *Server) addCron(topic *Topic) time.Time {
 	md := topic.Metadata
 	uc := md.UpdateCron
 	if uc != "" {
-		log.Printf("为帖子 <%s> 添加定时任务: %s\n", topic.Title, uc)
+		if topic.Title == "" {
+			log.Printf("为帖子 %d 添加定时任务: %s\n", topic.Id, uc)
+		} else {
+			log.Printf("为帖子 <%s> 添加定时任务: %s\n", topic.Title, uc)
+		}
 		id, e := srv.cron.AddFunc(uc, func() {
 			log.Println("为帖子添加处理任务", topic.Id)
 			srv.cache.queue <- topic.Id
@@ -333,6 +343,11 @@ max_floor = -1`
 						log.Printf("帖子失败次数 %d 达到最大重试次数 (%d)\n", id, md.retryCount)
 						srv.cron.Remove(md.updateCronId)
 						md.updateCronId = 0
+
+						// 放弃更新
+						log.Printf("放弃更新帖子 %d\n", id)
+						md.Abandon = true
+						go topic.Save()
 					}
 				}
 			}
