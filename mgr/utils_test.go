@@ -8,7 +8,25 @@ import (
 	"github.com/i2534/ngamm/mgr"
 )
 
-func TestRootReadDir(t *testing.T) {
+func TestExtRootOpenRoot(t *testing.T) {
+	root, e := mgr.OpenRoot(".")
+	if e != nil {
+		t.Fatal(e)
+	}
+	defer root.Close()
+
+	if _, e := root.OpenRoot("xxx"); e != nil {
+		t.Log(e)
+		assert.NotEqual(t, e, nil)
+	}
+	if sub, e := root.SafeOpenRoot("xxx"); e != nil {
+		t.Fatal(e)
+	} else {
+		sub.Close()
+		t.Log(root.Remove("xxx"))
+	}
+}
+func TestExtRootReadDir(t *testing.T) {
 	root, e := mgr.OpenRoot(".")
 	if e != nil {
 		t.Fatal(e)
@@ -28,7 +46,7 @@ func TestRootReadDir(t *testing.T) {
 	t.Log(e)
 	assert.NotEqual(t, e, nil)
 }
-func TestRootAbsPath(t *testing.T) {
+func TestExtRootAbsPath(t *testing.T) {
 	root, e := mgr.OpenRoot(".")
 	if e != nil {
 		t.Fatal(e)
@@ -51,7 +69,7 @@ func TestRootAbsPath(t *testing.T) {
 		}
 	}
 }
-func TestRootIsExist(t *testing.T) {
+func TestExtRootIsExist(t *testing.T) {
 	root, e := mgr.OpenRoot(".")
 	if e != nil {
 		t.Fatal(e)

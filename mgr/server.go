@@ -107,7 +107,7 @@ func formatTimestamp(timestamp time.Time) string {
 }
 
 func NewServer(cfg *Config, nga *Client) (*Server, error) {
-	tr, e := nga.GetRoot().OpenRoot(DIR_TOPIC_ROOT)
+	tr, e := nga.GetRoot().SafeOpenRoot(DIR_TOPIC_ROOT)
 	if e != nil {
 		return nil, e
 	}
@@ -128,7 +128,7 @@ func NewServer(cfg *Config, nga *Client) (*Server, error) {
 		cache: &cache{
 			lock:      &sync.RWMutex{},
 			queue:     make(chan int, QUEUE_SIZE),
-			topicRoot: &ExtRoot{tr},
+			topicRoot: tr,
 		},
 	}
 
@@ -274,7 +274,11 @@ func (srv *Server) process() {
 			continue
 		}
 
-		log.Printf("更新帖子 %d <%s>\n", id, old.Title)
+		if old.Title == "" {
+			log.Printf("更新帖子 %d\n", id)
+		} else {
+			log.Printf("更新帖子 %d <%s>\n", id, old.Title)
+		}
 
 		// 先检查 process.ini, assets.json 存在与否, 如果文件夹存在但文件不存在, ngapost2md 会认为其是无效的帖子, 不予更新
 		dir := old.root

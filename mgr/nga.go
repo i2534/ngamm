@@ -157,8 +157,7 @@ func InitNGA(program string) (*Client, error) {
 	if e != nil {
 		return nil, e
 	}
-	root.Mkdir(USER_DIR, 0755)
-	ur, e := root.OpenRoot(USER_DIR)
+	ur, e := root.SafeOpenRoot(USER_DIR)
 	if e != nil {
 		return nil, e
 	}
@@ -167,7 +166,7 @@ func InitNGA(program string) (*Client, error) {
 		program: program,
 		root:    root,
 		users: &users{
-			root: &ExtRoot{ur},
+			root: ur,
 			lock: &sync.RWMutex{},
 			data: make(map[string]User),
 		},

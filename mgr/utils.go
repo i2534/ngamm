@@ -70,6 +70,11 @@ type ExtRoot struct {
 }
 
 func OpenRoot(path string) (*ExtRoot, error) {
+	if !IsExist(path) {
+		if e := os.MkdirAll(path, COMMON_DIR_MODE); e != nil {
+			return nil, e
+		}
+	}
 	r, e := os.OpenRoot(path)
 	if e != nil {
 		return nil, e
@@ -82,6 +87,19 @@ func (r *ExtRoot) join(path ...string) string {
 		fn = filepath.Join(path...)
 	}
 	return fn
+}
+func (r *ExtRoot) SafeOpenRoot(path ...string) (*ExtRoot, error) {
+	p := r.join(path...)
+	if !r.IsExist(p) {
+		if e := r.Mkdir(p, COMMON_DIR_MODE); e != nil {
+			return nil, e
+		}
+	}
+	sub, e := r.OpenRoot(p)
+	if e != nil {
+		return nil, e
+	}
+	return &ExtRoot{sub}, nil
 }
 func (r *ExtRoot) ReadDir(path ...string) ([]fs.DirEntry, error) {
 	f, e := r.Open(r.join(path...))

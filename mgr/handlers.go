@@ -154,14 +154,14 @@ func (srv *Server) addTopic(id int) error {
 		return fmt.Errorf("帖子已存在")
 	}
 
-	r, e := cache.topicRoot.OpenRoot(strconv.Itoa(id))
+	r, e := cache.topicRoot.SafeOpenRoot(strconv.Itoa(id))
 	if e != nil {
 		return e
 	}
 
 	log.Printf("从 %s 加载帖子\n", r.Name())
 
-	topic := NewTopic(&ExtRoot{r}, id)
+	topic := NewTopic(r, id)
 	topic.Create = Now()
 	topic.Metadata.UpdateCron = DEFAULT_CRON
 

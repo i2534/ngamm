@@ -55,14 +55,13 @@ func NewTopic(root *ExtRoot, id int) *Topic {
 }
 
 func LoadTopic(root *ExtRoot, id int) (*Topic, error) {
-	r, e := root.OpenRoot(strconv.Itoa(id))
+	dir, e := root.SafeOpenRoot(strconv.Itoa(id))
 	if e != nil {
 		return nil, e
 	}
 
-	log.Printf("从 %s 加载帖子\n", r.Name())
+	log.Printf("从 %s 加载帖子\n", dir.Name())
 
-	dir := &ExtRoot{r}
 	topic := NewTopic(dir, id)
 
 	if dir.IsExist(POST_MARKDOWN) {
