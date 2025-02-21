@@ -262,7 +262,7 @@ func (c *Client) BaseURL() string {
 func (c *Client) DownTopic(tid int) (bool, string) {
 	out, e := c.execute([]string{strconv.Itoa(tid)})
 	if e != nil {
-		log.Printf("下载主题 %d 出现问题: %s\n", tid, e.Error())
+		log.Printf("下载帖子 %d 出现问题: %s\n", tid, e.Error())
 	} else {
 
 		log.Printf("\n%s", out)
@@ -274,13 +274,13 @@ func (c *Client) DownTopic(tid int) (bool, string) {
 				continue
 			}
 			if strings.Contains(line, "任务结束") {
-				log.Printf("下载主题 %d 完成\n", tid)
+				log.Printf("下载帖子 %d 完成\n", tid)
 				return true, ""
 			}
 			i := strings.Index(line, "返回代码不为")
 			if i > 0 {
 				msg := line[i:]
-				log.Printf("下载主题 %d 出现问题: %s\n", tid, msg)
+				log.Printf("下载帖子 %d 出现问题: %s\n", tid, msg)
 				return false, msg
 			}
 		}
@@ -349,7 +349,7 @@ func (c *Client) GetUser(username string) (User, error) {
 		ipLoc := info["ipLoc"].(string)
 		regDate := int64(info["regdate"].(float64))
 
-		log.Printf("获取到用户 %s 的信息, UID = %d\n", username, uid)
+		log.Printf("获取到用户 %s[%d] 的信息\n", username, uid)
 
 		u := User{
 			Id:      uid,
@@ -425,11 +425,11 @@ func (c *Client) doSubscribe(user *User) error {
 
 			newest, e := c.GetUserPost(user.Id, max)
 			if e != nil {
-				log.Printf("获取用户 %s(%d) 的帖子失败: %s\n", user.Name, user.Id, e.Error())
+				log.Printf("获取用户 %s[%d] 的帖子失败: %s\n", user.Name, user.Id, e.Error())
 				return
 			}
 
-			log.Printf("获取用户 %s(%d) 新的帖子数量: %d\n", user.Name, user.Id, len(newest))
+			log.Printf("获取用户 %s[%d] 新的帖子数量: %d\n", user.Name, user.Id, len(newest))
 
 			for _, topic := range newest {
 				if topic.Miss {
@@ -439,14 +439,15 @@ func (c *Client) doSubscribe(user *User) error {
 
 				if (user.SubFilter != nil) && len(*user.SubFilter) > 0 {
 					matched := false
+					lowerTitle := strings.ToLower(topic.Title)
 					for _, cond := range *user.SubFilter {
-						cond = strings.TrimSpace(cond)
+						cond = strings.ToLower(strings.TrimSpace(cond))
 						if strings.Contains(cond, "+") { // 必须同时包含多个条件
 							cs := strings.Split(cond, "+")
 							cm := true
 							for _, c := range cs {
 								c = strings.TrimSpace(c)
-								if !strings.Contains(topic.Title, c) {
+								if !strings.Contains(lowerTitle, c) {
 									cm = false
 									break
 								}
@@ -455,7 +456,7 @@ func (c *Client) doSubscribe(user *User) error {
 								matched = true
 								break
 							}
-						} else if strings.Contains(topic.Title, cond) { // 包含任意一个条件
+						} else if strings.Contains(lowerTitle, cond) { // 包含任意一个条件
 							matched = true
 							break
 						}
@@ -481,7 +482,7 @@ func (c *Client) doSubscribe(user *User) error {
 }
 func (c *Client) Subscribe(uid int, status bool, filter ...string) error {
 	if u, ok := c.users.GetByUid(uid); ok {
-		log.Printf("变更用户 %s(%d) 订阅状态: %v\n", u.Name, u.Id, status)
+		log.Printf("变更用户 %s[%d] 订阅状态: %v\n", u.Name, u.Id, status)
 		if status {
 			if !u.Subscribed {
 				nu := &u

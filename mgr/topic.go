@@ -90,6 +90,8 @@ func LoadTopic(root *ExtRoot, id int) (*Topic, error) {
 		}
 		if topic.Title == "" {
 			log.Printf("帖子 %d 中未找到标题", id)
+		} else {
+			log.Printf("成功加载帖子 %d : <%s>", id, topic.Title)
 		}
 	} else {
 		log.Printf("在目录 %s 中未找到 %s", dir.Name(), POST_MARKDOWN)

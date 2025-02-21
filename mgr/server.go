@@ -187,9 +187,9 @@ func (srv *Server) loadTopics() {
 				d := time.Until(next)
 				if d > time.Minute*30 {
 					d = time.Duration(rand.Int64N(int64(d) / 2))
-					log.Println("随机更新帖子", id, "在", d, "后")
+					log.Printf("随机更新帖子 <%s> 在 %s 后\n", topic.Title, d)
 					timer := time.AfterFunc(d, func() {
-						log.Println("随机更新帖子", id)
+						log.Println("随机更新帖子", topic.Title)
 						cache.queue <- id
 						topic.timers.Delete(d)
 					})
@@ -244,7 +244,7 @@ func (srv *Server) addCron(topic *Topic) time.Time {
 	md := topic.Metadata
 	uc := md.UpdateCron
 	if uc != "" {
-		log.Println("为帖子添加定时任务", topic.Id, ":", uc)
+		log.Printf("为帖子 <%s> 添加定时任务: %s\n", topic.Title, uc)
 		id, e := srv.cron.AddFunc(uc, func() {
 			log.Println("为帖子添加处理任务", topic.Id)
 			srv.cache.queue <- topic.Id
@@ -270,9 +270,11 @@ func (srv *Server) process() {
 
 		old, has := cache.topics.Get(id)
 		if !has {
-			log.Println("未找到帖子，是否已删除？")
+			log.Println("未找到帖子", id, "，是否已删除？")
 			continue
 		}
+
+		log.Printf("更新帖子 %d <%s>\n", id, old.Title)
 
 		// 先检查 process.ini, assets.json 存在与否, 如果文件夹存在但文件不存在, ngapost2md 会认为其是无效的帖子, 不予更新
 		dir := old.root
