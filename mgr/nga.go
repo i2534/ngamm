@@ -513,7 +513,7 @@ func (c *Client) Subscribe(uid int, status bool, filter ...string) error {
 }
 
 func (c *Client) execute(args []string) (string, error) {
-	dir, e := c.root.AbsPath(".")
+	dir, e := c.root.AbsPath()
 	if e != nil {
 		return "", e
 	}

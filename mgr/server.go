@@ -52,7 +52,7 @@ type cache struct {
 
 func (c *cache) Close() error {
 	c.topics.EAC(func(_ int, topic *Topic) {
-		topic.Stop()
+		topic.Close()
 	})
 	close(c.queue)
 	return c.topicRoot.Close()
@@ -128,7 +128,7 @@ func NewServer(cfg *Config, nga *Client) (*Server, error) {
 		cache: &cache{
 			lock:      &sync.RWMutex{},
 			queue:     make(chan int, QUEUE_SIZE),
-			topicRoot: &ExtRoot{Root: tr},
+			topicRoot: &ExtRoot{tr},
 		},
 	}
 
@@ -158,7 +158,7 @@ func (srv *Server) loadTopics() {
 		return
 	}
 
-	files, e := cache.topicRoot.ReadDir(".")
+	files, e := cache.topicRoot.ReadDir()
 	if e != nil {
 		log.Println("读取帖子根目录失败:", e)
 	} else {
@@ -277,22 +277,18 @@ func (srv *Server) process() {
 		// 先检查 process.ini, assets.json 存在与否, 如果文件夹存在但文件不存在, ngapost2md 会认为其是无效的帖子, 不予更新
 		dir := old.root
 		// 创建文件夹, 防止因为异步导致文件夹在判断 process.ini, assets.json 之后被创建, 然后导致 ngapost2md 无法更新
-		dir.Mkdir(".", 0755)
-
-		if dir.IsExist(".") {
-			if !dir.IsExist(PROCESS_INI) {
-				data := `[local]
+		if !dir.IsExist(PROCESS_INI) {
+			data := `[local]
 max_page = 1
 max_floor = -1`
-				if e := dir.WriteAll(PROCESS_INI, []byte(data), 0644); e != nil {
-					log.Println("创建 process.ini 失败:", e)
-				}
+			if e := dir.WriteAll(PROCESS_INI, []byte(data)); e != nil {
+				log.Println("创建 process.ini 失败:", e)
 			}
-			if !dir.IsExist(ASSETSA_JSON) {
-				data := "{}"
-				if e := dir.WriteAll(ASSETSA_JSON, []byte(data), 0644); e != nil {
-					log.Println("创建 assets.json 失败:", e)
-				}
+		}
+		if !dir.IsExist(ASSETSA_JSON) {
+			data := "{}"
+			if e := dir.WriteAll(ASSETSA_JSON, []byte(data)); e != nil {
+				log.Println("创建 assets.json 失败:", e)
 			}
 		}
 

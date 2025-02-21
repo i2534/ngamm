@@ -1,6 +1,7 @@
 package mgr_test
 
 import (
+	"os"
 	"testing"
 
 	"github.com/go-playground/assert/v2"
@@ -14,7 +15,7 @@ func TestRootReadDir(t *testing.T) {
 	}
 	defer root.Close()
 
-	if es, e := root.ReadDir("."); e != nil {
+	if es, e := root.ReadDir(); e != nil {
 		t.Fatal(e)
 	} else {
 		t.Log(es)
@@ -34,7 +35,7 @@ func TestRootAbsPath(t *testing.T) {
 	}
 	defer root.Close()
 
-	if es, e := root.ReadDir("."); e != nil {
+	if es, e := root.ReadDir(); e != nil {
 		t.Fatal(e)
 	} else {
 		for _, e := range es {
@@ -57,7 +58,7 @@ func TestRootIsExist(t *testing.T) {
 	}
 	defer root.Close()
 
-	if es, e := root.ReadDir("."); e != nil {
+	if es, e := root.ReadDir(); e != nil {
 		t.Fatal(e)
 	} else {
 		for _, e := range es {
@@ -74,7 +75,19 @@ func TestRootIsExist(t *testing.T) {
 		t.Fatal(e)
 	}
 
-	if e := root.IsExist("assets/home.html"); !e {
+	if e := root.IsExist("assets", "home.html"); !e {
+		t.Fatal(e)
+	}
+}
+
+func TestExtRootWriteAll(t *testing.T) {
+	root, e := mgr.OpenRoot(os.TempDir())
+	if e != nil {
+		t.Fatal(e)
+	}
+	defer root.Close()
+
+	if e := root.WriteAll("output/test.txt", []byte("hello, world!")); e != nil {
 		t.Fatal(e)
 	}
 }

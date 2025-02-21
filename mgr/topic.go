@@ -125,14 +125,11 @@ func LoadTopic(root *ExtRoot, id int) (*Topic, error) {
 }
 
 func (t *Topic) Save() error {
-	dir := t.root
-	dir.Mkdir(".", 0755)
-
 	data, e := json.MarshalIndent(t.Metadata, "", "  ")
 	if e != nil {
 		return e
 	}
-	return dir.WriteAll(METADATA_JSON, data, 0644)
+	return t.root.WriteAll(METADATA_JSON, data)
 }
 
 func (t *Topic) Content() (string, error) {
@@ -147,6 +144,10 @@ func (t *Topic) Stop() {
 	t.timers.EAC(func(_ time.Duration, timer *time.Timer) {
 		timer.Stop()
 	})
+}
+func (t *Topic) Close() error {
+	t.Stop()
+	return t.root.Close()
 }
 
 func (t *Topic) Modify() {

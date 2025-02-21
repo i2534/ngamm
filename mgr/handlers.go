@@ -233,23 +233,25 @@ func (srv *Server) topicDel() func(c *gin.Context) {
 
 		go func() {
 			log.Println("删除帖子", id)
-			topic.Stop()
-			dir, e := topic.root.AbsPath(".")
+			defer topic.Close()
+
+			dir, e := topic.root.AbsPath()
 			if e != nil {
 				log.Println("获取帖子绝对路径失败:", e)
 				return
 			}
+
 			recycles, e := cache.topicRoot.AbsPath(DIR_RECYCLE_BIN)
 			if e != nil {
 				log.Println("获取回收站绝对路径失败:", e)
 				return
 			}
-			if e := os.MkdirAll(recycles, 0755); e != nil {
+			if e := os.MkdirAll(recycles, COMMON_DIR_MODE); e != nil {
 				log.Println("创建回收站失败:", recycles, e)
 
-				log.Println("删除帖子:", dir)
+				log.Println("尝试直接删除帖子:", dir)
 				if e := os.RemoveAll(dir); e != nil {
-					log.Println("删除帖子失败:", dir, e)
+					log.Println("直接删除帖子失败:", dir, e)
 				}
 			} else {
 				log.Println("移动帖子到回收站:", dir)
@@ -258,7 +260,7 @@ func (srv *Server) topicDel() func(c *gin.Context) {
 				if e := os.Rename(dir, tar); e != nil {
 					log.Println("移动帖子到回收站失败:", dir, e)
 				} else {
-					os.WriteFile(filepath.Join(tar, DELETE_FLAG), []byte(time.Now().Format(time.RFC3339)), 0644)
+					os.WriteFile(filepath.Join(tar, DELETE_FLAG), []byte(time.Now().Format(time.RFC3339)), COMMON_FILE_MODE)
 				}
 			}
 		}()
@@ -365,17 +367,14 @@ func (srv *Server) viewTopicRes() func(c *gin.Context) {
 			return
 		}
 
-		data, e := topic.root.Open(name)
+		f, e := topic.root.Open(name)
 		if e != nil {
 			c.String(http.StatusInternalServerError, "读取资源失败")
 			return
 		}
-		defer data.Close()
-		size := int64(-1)
-		if info, e := data.Stat(); e == nil {
-			size = info.Size()
-		}
-		c.DataFromReader(http.StatusOK, size, ContentType(name), data, nil)
+		defer f.Close()
+
+		c.DataFromReader(http.StatusOK, FileSize(f), ContentType(name), f, nil)
 	}
 }
 
@@ -392,17 +391,10 @@ func (srv *Server) replayAttachment(c *gin.Context, name string, topic *Topic) {
 		return
 	}
 	log.Println("附件来源", src)
-	ext := filepath.Ext(src)
-	topic.root.Mkdir(ATTACH_DIR, 0644)
-	dir, e := topic.root.AbsPath(ATTACH_DIR)
-	if e != nil {
-		c.String(http.StatusInternalServerError, "获取附件目录失败")
-		return
-	}
-	fn := name[:i] + "_" + ShortSha1(src) + ext
-	file := filepath.Join(dir, fn)
-	if IsExist(file) {
-		f, e := os.Open(file)
+	fn := name[:i] + "_" + ShortSha1(src) + filepath.Ext(src)
+	fp := filepath.Join(ATTACH_DIR, fn)
+	if topic.root.IsExist(fp) {
+		f, e := topic.root.OpenReader(fp)
 		if e != nil {
 			c.String(http.StatusInternalServerError, "打开附件文件失败")
 			return
@@ -411,10 +403,7 @@ func (srv *Server) replayAttachment(c *gin.Context, name string, topic *Topic) {
 
 		log.Println("命中附件缓存", fn)
 
-		c.Header("Content-Type", ContentType(fn))
-		if _, e := io.Copy(c.Writer, f); e != nil {
-			c.String(http.StatusInternalServerError, "复制附件内容失败")
-		}
+		c.DataFromReader(http.StatusOK, FileSize(f), ContentType(fn), f, nil)
 		return
 	}
 
@@ -439,7 +428,7 @@ func (srv *Server) replayAttachment(c *gin.Context, name string, topic *Topic) {
 			return
 		}
 
-		f, e := os.Create(file)
+		f, e := topic.root.OpenWriter(fp)
 		if e != nil {
 			c.String(http.StatusInternalServerError, "打开附件文件失败")
 			return

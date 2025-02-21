@@ -18,6 +18,11 @@ import (
 	"golang.org/x/text/transform"
 )
 
+const (
+	COMMON_DIR_MODE  os.FileMode = 0755
+	COMMON_FILE_MODE os.FileMode = 0644
+)
+
 type CustomTime struct {
 	time.Time
 }
@@ -71,24 +76,31 @@ func OpenRoot(path string) (*ExtRoot, error) {
 	}
 	return &ExtRoot{Root: r}, nil
 }
-func (r *ExtRoot) ReadDir(name string) ([]fs.DirEntry, error) {
-	f, e := r.Open(name)
+func (r *ExtRoot) join(path ...string) string {
+	fn := "."
+	if len(path) > 0 {
+		fn = filepath.Join(path...)
+	}
+	return fn
+}
+func (r *ExtRoot) ReadDir(path ...string) ([]fs.DirEntry, error) {
+	f, e := r.Open(r.join(path...))
 	if e != nil {
 		return nil, e
 	}
 	defer f.Close()
 	return f.ReadDir(-1)
 }
-func (r *ExtRoot) AbsPath(name string) (string, error) {
-	f, e := r.Open(name)
+func (r *ExtRoot) AbsPath(path ...string) (string, error) {
+	f, e := r.Open(r.join(path...))
 	if e != nil {
 		return "", e
 	}
 	defer f.Close()
 	return filepath.Abs(f.Name())
 }
-func (r *ExtRoot) IsExist(name string) bool {
-	if _, e := r.Stat(name); os.IsNotExist(e) {
+func (r *ExtRoot) IsExist(path ...string) bool {
+	if _, e := r.Stat(r.join(path...)); os.IsNotExist(e) {
 		return false
 	}
 	return true
@@ -113,16 +125,50 @@ func (r *ExtRoot) EveryLine(name string, fx func(string, int) bool) error {
 	}
 	return nil
 }
-func (r *ExtRoot) ReadAll(name string) ([]byte, error) {
-	f, e := r.Open(name)
+func (r *ExtRoot) OpenReader(path ...string) (*os.File, error) {
+	f, e := r.Open(r.join(path...))
+	if e != nil {
+		return nil, e
+	}
+	return f, nil
+}
+func (r *ExtRoot) OpenWriter(name string, perm ...os.FileMode) (*os.File, error) {
+	d := filepath.Dir(name)
+	if !r.IsExist(d) {
+		if e := r.Mkdir(d, COMMON_DIR_MODE); e != nil {
+			return nil, e
+		}
+	}
+	fm := COMMON_FILE_MODE
+	if len(perm) > 0 {
+		fm = perm[0]
+	}
+	f, e := r.OpenFile(name, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, fm)
+	if e != nil {
+		return nil, e
+	}
+	return f, nil
+}
+func (r *ExtRoot) ReadAll(path ...string) ([]byte, error) {
+	f, e := r.Open(r.join(path...))
 	if e != nil {
 		return nil, e
 	}
 	defer f.Close()
 	return io.ReadAll(f)
 }
-func (r *ExtRoot) WriteAll(name string, data []byte, perm os.FileMode) error {
-	f, e := r.OpenFile(name, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, perm)
+func (r *ExtRoot) WriteAll(name string, data []byte, perm ...os.FileMode) error {
+	d := filepath.Dir(name)
+	if !r.IsExist(d) {
+		if e := r.Mkdir(d, COMMON_DIR_MODE); e != nil {
+			return e
+		}
+	}
+	fm := COMMON_FILE_MODE
+	if len(perm) > 0 {
+		fm = perm[0]
+	}
+	f, e := r.OpenFile(name, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, fm)
 	if e != nil {
 		return e
 	}
@@ -136,6 +182,14 @@ func IsExist(path string) bool {
 		return false
 	}
 	return true
+}
+
+func FileSize(f *os.File) int64 {
+	fi, e := f.Stat()
+	if e != nil {
+		return -1
+	}
+	return fi.Size()
 }
 
 func GBKReadAll(r io.Reader) ([]byte, error) {
