@@ -40,9 +40,23 @@ function render(ngaBase, id, token, content) {
                 })
         },
     };
-    function fixSrc(src) {
+    function findNgaSmileName(src, title) {
+        if (src.includes('.nga.') && src.includes('/smile/')) {
+            let name = src.substring(src.lastIndexOf('/') + 1);
+            if (name === '' && title) {// FIX NG娘表情 name 缺失
+                name = 'ng_' + encodeURIComponent(title);
+            }
+            return name;
+        }
+        return '';
+    }
+    function fixSrc(src, title) {
         if (src && src.startsWith('./')) {
             return baseUrl + src.substring(2);
+        }
+        const name = findNgaSmileName(src, title);
+        if (name !== '') {// 强制将链接到 NGA 的表情图片转换到本服务器
+            return `${origin}/view/${token}/smile/${name}`;
         }
         return src;
     }
@@ -51,7 +65,7 @@ function render(ngaBase, id, token, content) {
         if (['mp4', 'webm', 'ogg'].includes(ext)) {
             return makeVideo(src, title, poster);
         } else {
-            return `<img ${attrSrc}="${fixSrc(src)}" alt="${title}" title="${title}" onerror="tryReloadImage(this)">`;
+            return `<img ${attrSrc}="${fixSrc(src, title)}" alt="${title}" title="${title}" onerror="tryReloadImage(this)">`;
         }
     }
     function makeLink(href, text, title) {
@@ -59,7 +73,7 @@ function render(ngaBase, id, token, content) {
         if (!href.startsWith('#')) {
             target = ' target="_blank"';
         }
-        return `<a href="${fixSrc(href)}" title="${title || text}"${target}>${text === 'url' ? href : text}</a>`;
+        return `<a href="${fixSrc(href, title)}" title="${title || text}"${target}>${text === 'url' ? href : text}</a>`;
     }
     function makeVideo(src, title, poster) {
         let extra = '';
@@ -114,12 +128,11 @@ function render(ngaBase, id, token, content) {
             }
             if (src.startsWith(origin)) {
                 img.src = src + '?t=' + new Date().getTime(); // 添加时间戳以强制重新加载
-            } else if (src.indexOf('.nga.') != -1 && src.indexOf('/smile/') != -1) {// NGA 服务器拒绝跨域访问, 那就让服务器做代理
-                let name = src.substring(src.lastIndexOf('/') + 1);
-                if (name === '') {// FIX NG娘表情 name 缺失
-                    name = 'ng_' + encodeURIComponent(oldTitle);
+            } else {// NGA 服务器拒绝跨域访问, 那就让服务器做代理
+                const name = findNgaSmileName(src, oldTitle);
+                if (name !== '') {
+                    img.src = `${origin}/view/${token}/smile/${name}`;
                 }
-                img.src = `${origin}/view/${token}/smile/${name}`;
             }
             img.style.cursor = oldCursor;
             img.title = oldTitle;

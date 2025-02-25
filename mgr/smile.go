@@ -6,8 +6,6 @@ import (
 	"io"
 	"log"
 	"net/http"
-	"os"
-	"path/filepath"
 	"strings"
 	"sync/atomic"
 )
@@ -22,7 +20,7 @@ type Smile struct {
 	Base string `json:"base"`
 	List []item `json:"list"`
 
-	root   string
+	root   *ExtRoot
 	cache  *SyncMap[string, *item]
 	failed *SyncMap[string, bool]
 }
@@ -93,9 +91,9 @@ func (s *Smile) Local(name, ua string) ([]byte, error) {
 	if d != nil {
 		return d.([]byte), nil
 	}
-	path := filepath.Join(s.root, v.Path)
-	if IsExist(path) {
-		data, e := os.ReadFile(path)
+
+	if s.root.IsExist(v.Path) {
+		data, e := s.root.ReadAll(v.Path)
 		if e != nil {
 			return nil, fmt.Errorf("读取表情 %s 失败: %w", name, e)
 		}
@@ -110,7 +108,7 @@ func (s *Smile) Local(name, ua string) ([]byte, error) {
 	url := s.URL(name)
 	if url != "" {
 		go func() {
-			if e := s.fetch(path, url, ua); e != nil {
+			if e := s.fetch(v.Path, url, ua); e != nil {
 				log.Println(e.Error())
 			} else {
 				s.failed.Put(name, true)
@@ -137,8 +135,7 @@ func (s *Smile) fetch(path, url, ua string) error {
 		return fmt.Errorf("下载表情 %s 失败, 状态码: %d", url, resp.StatusCode)
 	}
 
-	os.MkdirAll(s.root, os.ModePerm)
-	file, e := os.Create(path)
+	file, e := s.root.Create(path)
 	if e != nil {
 		return fmt.Errorf("创建表情文件失败: %w", e)
 	}

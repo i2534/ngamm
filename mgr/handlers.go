@@ -77,6 +77,9 @@ func (srv *Server) regHandlers() {
 	r.GET("/", srv.homePage())
 	r.GET("/favicon.ico", srv.favicon())
 	r.GET("/asset/:name", srv.asset())
+
+	r.GET("/to", srv.test(http.StatusOK))
+	r.GET("/ts", srv.test(http.StatusServiceUnavailable))
 }
 
 func toErr(msg string) gin.H {
@@ -339,7 +342,7 @@ func (srv *Server) viewTopicRes() func(c *gin.Context) {
 
 		name := c.Param("name")
 		if name == "" {
-			c.String(http.StatusBadRequest, "无效的文件名")
+			c.JSON(http.StatusBadRequest, "无效的文件名")
 			return
 		}
 
@@ -350,14 +353,14 @@ func (srv *Server) viewTopicRes() func(c *gin.Context) {
 
 		id, e := strconv.Atoi(tid)
 		if e != nil {
-			c.String(http.StatusBadRequest, "无效的帖子 ID")
+			c.JSON(http.StatusBadRequest, "无效的帖子 ID")
 			return
 		}
 
 		cache := srv.cache
 		topic, has := cache.topics.Get(id)
 		if !has {
-			c.String(http.StatusNotFound, "未找到帖子")
+			c.JSON(http.StatusNotFound, "未找到帖子")
 			return
 		}
 
@@ -369,7 +372,7 @@ func (srv *Server) viewTopicRes() func(c *gin.Context) {
 
 		f, e := topic.root.Open(name)
 		if e != nil {
-			c.String(http.StatusInternalServerError, "读取资源失败")
+			c.JSON(http.StatusInternalServerError, "读取资源失败")
 			return
 		}
 		defer f.Close()
@@ -381,13 +384,13 @@ func (srv *Server) viewTopicRes() func(c *gin.Context) {
 func (srv *Server) replayAttachment(c *gin.Context, name string, topic *Topic) {
 	i := strings.IndexByte(name, '_')
 	if i < 0 {
-		c.String(http.StatusBadRequest, "无效的附件名，缺少楼层")
+		c.JSON(http.StatusBadRequest, "无效的附件名，缺少楼层")
 		return
 	}
 
 	src, e := url.QueryUnescape(strings.ReplaceAll(name[i+1:], "_2F", "%2F"))
 	if e != nil {
-		c.String(http.StatusBadRequest, "无效的附件名，解码失败")
+		c.JSON(http.StatusBadRequest, "无效的附件名，解码失败")
 		return
 	}
 	log.Println("附件来源", src)
@@ -396,7 +399,7 @@ func (srv *Server) replayAttachment(c *gin.Context, name string, topic *Topic) {
 	if topic.root.IsExist(fp) {
 		f, e := topic.root.OpenReader(fp)
 		if e != nil {
-			c.String(http.StatusInternalServerError, "打开附件文件失败")
+			c.JSON(http.StatusInternalServerError, "打开附件文件失败")
 			return
 		}
 		defer f.Close()
@@ -411,26 +414,26 @@ func (srv *Server) replayAttachment(c *gin.Context, name string, topic *Topic) {
 		log.Println("获取附件", src)
 		req, e := http.NewRequest(http.MethodGet, src, nil)
 		if e != nil {
-			c.String(http.StatusInternalServerError, "无效的附件名，创建请求失败")
+			c.JSON(http.StatusInternalServerError, "无效的附件名，创建请求失败")
 			return
 		}
 		req.Header.Set("User-Agent", srv.nga.GetUA())
 
 		resp, e := DoHttp(req)
 		if e != nil {
-			c.String(http.StatusInternalServerError, "获取附件失败")
+			c.JSON(http.StatusInternalServerError, "获取附件失败")
 			return
 		}
 		defer resp.Body.Close()
 
 		if resp.StatusCode != http.StatusOK {
-			c.String(http.StatusInternalServerError, "获取附件失败，状态码: "+strconv.Itoa(resp.StatusCode))
+			c.JSON(http.StatusInternalServerError, "获取附件失败，状态码: "+strconv.Itoa(resp.StatusCode))
 			return
 		}
 
 		f, e := topic.root.OpenWriter(fp)
 		if e != nil {
-			c.String(http.StatusInternalServerError, "打开附件文件失败")
+			c.JSON(http.StatusInternalServerError, "打开附件文件失败")
 			return
 		}
 		defer f.Close()
@@ -439,10 +442,10 @@ func (srv *Server) replayAttachment(c *gin.Context, name string, topic *Topic) {
 		c.Header("Content-Length", resp.Header.Get("Content-Length"))
 		iw := io.MultiWriter(c.Writer, f)
 		if _, e := io.Copy(iw, resp.Body); e != nil {
-			c.String(http.StatusInternalServerError, "复制附件内容失败")
+			c.JSON(http.StatusInternalServerError, "复制附件内容失败")
 		}
 	} else {
-		c.String(http.StatusBadRequest, "无效的附件名，不是 NGA 的附件")
+		c.JSON(http.StatusBadRequest, "无效的附件名，不是 NGA 的附件")
 	}
 }
 
@@ -454,16 +457,16 @@ func (srv *Server) replaySmile(c *gin.Context, name string) {
 
 		data, e := efs.ReadFile("assets/smiles.json")
 		if e != nil {
-			c.String(http.StatusInternalServerError, "加载内嵌的 smiles.json 失败")
+			c.JSON(http.StatusInternalServerError, "加载内嵌的 smiles.json 失败")
 			return
 		}
 		if smile, e := Unmarshal(data); e != nil {
-			c.String(http.StatusInternalServerError, "解析内嵌的 smiles.json 失败")
+			c.JSON(http.StatusInternalServerError, "解析内嵌的 smiles.json 失败")
 			return
 		} else {
-			dir, e := cache.topicRoot.AbsPath(SMILE_DIR)
+			dir, e := cache.topicRoot.SafeOpenRoot(SMILE_DIR)
 			if e != nil {
-				c.String(http.StatusInternalServerError, "获取表情目录失败")
+				c.JSON(http.StatusInternalServerError, "获取表情目录失败")
 				return
 			}
 			smile.root = dir
@@ -475,16 +478,16 @@ func (srv *Server) replaySmile(c *gin.Context, name string) {
 		url := cache.smile.URL(name)
 		if url == "" {
 			log.Printf("未找到表情 %s\n", name)
-			c.String(http.StatusNotFound, "未找到表情 "+name)
+			c.JSON(http.StatusNotFound, "未找到表情 "+name)
 		} else {
 			c.Redirect(http.StatusMovedPermanently, url)
 		}
 	} else {
 		data, e := cache.smile.Local(name, srv.nga.GetUA())
 		if e != nil {
-			c.String(http.StatusInternalServerError, "加载表情失败: "+e.Error())
+			c.JSON(http.StatusInternalServerError, "加载表情失败: "+e.Error())
 		} else if data == nil {
-			c.String(http.StatusNotFound, "未找到表情 "+name)
+			c.JSON(http.StatusNotFound, "未找到表情 "+name)
 		} else {
 			c.Data(http.StatusOK, ContentType(name), data)
 		}
@@ -576,7 +579,7 @@ func (srv *Server) favicon() func(c *gin.Context) {
 	return func(c *gin.Context) {
 		data, err := efs.ReadFile("assets/favicon.ico")
 		if err != nil {
-			c.String(http.StatusInternalServerError, "读取 favicon.ico 失败")
+			c.JSON(http.StatusInternalServerError, "读取 favicon.ico 失败")
 			return
 		}
 		c.Data(http.StatusOK, "image/x-icon", data)
@@ -588,7 +591,7 @@ func (srv *Server) asset() func(c *gin.Context) {
 		name := c.Param("name")
 		data, err := efs.ReadFile("assets/" + name)
 		if err != nil {
-			c.String(http.StatusInternalServerError, "读取资源失败 "+name)
+			c.JSON(http.StatusInternalServerError, "读取资源失败 "+name)
 			return
 		}
 		c.Data(http.StatusOK, ContentType(name), data)
@@ -658,5 +661,11 @@ func (srv *Server) unsubscribe() func(c *gin.Context) {
 		} else {
 			c.JSON(http.StatusInternalServerError, toErr(e.Error()))
 		}
+	}
+}
+
+func (srv *Server) test(code int) func(c *gin.Context) {
+	return func(c *gin.Context) {
+		c.String(code, "Test测试")
 	}
 }
