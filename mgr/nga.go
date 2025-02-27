@@ -38,10 +38,18 @@ type User struct {
 }
 
 type users struct {
-	root *ExtRoot
-	lock *sync.RWMutex
-	data map[string]User
+	root   *ExtRoot
+	lock   *sync.RWMutex
+	data   map[string]User
+	failed map[string]string //加载失败的用户
 }
+type userState int
+
+const (
+	state_have userState = iota + 1
+	state_miss
+	state_fail
+)
 
 func (u *users) load() {
 	u.lock.Lock()
@@ -82,24 +90,30 @@ func (u *users) load() {
 		u.data[user.Name] = user
 	}
 }
-
-func (u *users) Get(name string) (User, bool) {
+func (u *users) Get(name string) (User, userState) {
 	u.lock.RLock()
 	defer u.lock.RUnlock()
 
+	if _, has := u.failed[name]; has {
+		return User{}, state_fail
+	}
+
 	user, ok := u.data[name]
-	return user, ok
+	if ok {
+		return user, state_have
+	}
+	return user, state_miss
 }
-func (u *users) GetByUid(uid int) (User, bool) {
+func (u *users) GetByUid(uid int) (User, userState) {
 	u.lock.RLock()
 	defer u.lock.RUnlock()
 
 	for _, user := range u.data {
 		if user.Id == uid {
-			return user, true
+			return user, state_have
 		}
 	}
-	return User{}, false
+	return User{}, state_miss
 }
 func (u *users) Put(name string, user User) {
 	u.lock.Lock()
@@ -123,6 +137,18 @@ func (u *users) Put(name string, user User) {
 	if _, e := f.Write(data); e != nil {
 		log.Printf("写入用户信息失败: %s\n", e.Error())
 	}
+}
+func (u *users) Fail(name, msg string) {
+	u.lock.Lock()
+	defer u.lock.Unlock()
+
+	u.failed[name] = msg
+}
+func (u *users) FailMsg(name string) string {
+	u.lock.RLock()
+	defer u.lock.RUnlock()
+
+	return u.failed[name]
 }
 
 func (u *users) Close() error {
@@ -166,9 +192,10 @@ func InitNGA(program string) (*Client, error) {
 		program: program,
 		root:    root,
 		users: &users{
-			root: ur,
-			lock: &sync.RWMutex{},
-			data: make(map[string]User),
+			root:   ur,
+			lock:   &sync.RWMutex{},
+			data:   make(map[string]User),
+			failed: make(map[string]string),
 		},
 		cron: cron.New(cron.WithLocation(TIME_LOC)),
 	}
@@ -313,13 +340,71 @@ func (c *Client) getHTML(url string) (string, error) {
 	}
 	return string(data), nil
 }
+func (c *Client) extractUserInfo(html string, username string) (User, error) {
+	if strings.Contains(html, "找不到用户") {
+		c.users.Fail(username, "找不到用户")
+		return User{}, fmt.Errorf("未找到用户")
+	}
 
+	re := regexp.MustCompile(`__UCPUSER\s*=(.+)?;`)
+	matches := re.FindStringSubmatch(html)
+	if len(matches) < 2 {
+		c.users.Fail(username, "未匹配到用户信息")
+		return User{}, fmt.Errorf("未匹配到用户信息")
+	}
+	val := strings.TrimSpace(matches[1])
+	if len(val) > 0 {
+		info := make(map[string]any)
+		e := json.Unmarshal([]byte(val), &info)
+		if e != nil {
+			c.users.Fail(username, e.Error())
+			return User{}, fmt.Errorf("解析用户信息 %s 失败: %w", val, e)
+		}
+		uid := int(info["uid"].(float64))
+		name := info["username"].(string)
+		ipLoc := info["ipLoc"].(string)
+		regDate := int64(info["regdate"].(float64))
+
+		log.Printf("获取到用户 %s[%d] 的信息\n", username, uid)
+
+		u := User{
+			Id:      uid,
+			Name:    name,
+			Loc:     ipLoc,
+			RegDate: CustomTime{time.Unix(regDate, 0)},
+		}
+
+		c.users.Put(username, u)
+		if username != name {
+			c.users.Put(name, u)
+		}
+		return u, nil
+	}
+	c.users.Fail(username, "匹配到空的用户信息")
+	return User{}, fmt.Errorf("匹配到空的用户信息")
+}
+func (c *Client) GetUserById(uid int) (User, error) {
+	if u, s := c.users.GetByUid(uid); s == state_have {
+		return u, nil
+	} else if s == state_fail {
+		return User{}, fmt.Errorf("获取用户 %d 失败, 因为上次失败: %s", uid, c.users.FailMsg(fmt.Sprintf("UID%d", uid)))
+	}
+	url := fmt.Sprintf("%s/nuke.php?func=ucp&uid=%d", c.baseURL, uid)
+	html, e := c.getHTML(url)
+	if e != nil {
+		return User{}, e
+	}
+
+	return c.extractUserInfo(html, fmt.Sprintf("UID%d", uid))
+}
 func (c *Client) GetUser(username string) (User, error) {
 	if username == "" {
 		return User{}, fmt.Errorf("用户名为空")
 	}
-	if u, ok := c.users.Get(username); ok {
+	if u, s := c.users.Get(username); s == state_have {
 		return u, nil
+	} else if s == state_fail {
+		return User{}, fmt.Errorf("获取用户 %s 失败, 因为上次失败: %s", username, c.users.FailMsg(username))
 	}
 	eun, e := PathEscapeGBK(username)
 	if e != nil {
@@ -331,40 +416,7 @@ func (c *Client) GetUser(username string) (User, error) {
 		return User{}, e
 	}
 
-	// println(html)
-
-	if strings.Contains(html, "找不到用户") {
-		return User{}, fmt.Errorf("未找到用户")
-	}
-
-	re := regexp.MustCompile(`__UCPUSER\s*=(.+)?;`)
-	matches := re.FindStringSubmatch(html)
-	if len(matches) < 2 {
-		return User{}, fmt.Errorf("未匹配到用户信息")
-	}
-	val := strings.TrimSpace(matches[1])
-	if len(val) > 0 {
-		info := make(map[string]any)
-		e := json.Unmarshal([]byte(val), &info)
-		if e != nil {
-			return User{}, fmt.Errorf("解析用户信息 %s 失败: %w", val, e)
-		}
-		uid := int(info["uid"].(float64))
-		ipLoc := info["ipLoc"].(string)
-		regDate := int64(info["regdate"].(float64))
-
-		log.Printf("获取到用户 %s[%d] 的信息\n", username, uid)
-
-		u := User{
-			Id:      uid,
-			Name:    username,
-			Loc:     ipLoc,
-			RegDate: CustomTime{time.Unix(regDate, 0)},
-		}
-		c.users.Put(username, u)
-		return u, nil
-	}
-	return User{}, fmt.Errorf("匹配到空的用户信息")
+	return c.extractUserInfo(html, username)
 }
 
 type topicRecord struct {
@@ -485,7 +537,7 @@ func (c *Client) doSubscribe(user *User) error {
 	return nil
 }
 func (c *Client) Subscribe(uid int, status bool, filter ...string) error {
-	if u, ok := c.users.GetByUid(uid); ok {
+	if u, s := c.users.GetByUid(uid); s == state_have {
 		log.Printf("变更用户 %s[%d] 订阅状态: %v\n", u.Name, u.Id, status)
 		if status {
 			if !u.Subscribed {
@@ -514,7 +566,7 @@ func (c *Client) Subscribe(uid int, status bool, filter ...string) error {
 		}
 		return nil
 	}
-	return fmt.Errorf("未找到用户")
+	return fmt.Errorf("用户信息加载失败")
 }
 
 func (c *Client) execute(args []string) (string, error) {

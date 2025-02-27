@@ -57,6 +57,11 @@ func NewTopic(root *ExtRoot, id int) *Topic {
 	}
 }
 
+var (
+	regexAuthorInfo  *regexp.Regexp = regexp.MustCompile(`\\<pid:0\\>\s+(\d{4}-\d{2}-\d{2}\s+\d{2}:\d{2}:\d{2})\s+by\s+([^(]+)(\(\d+\))?\s*<`)
+	regexAuthorIsUID *regexp.Regexp = regexp.MustCompile(`UID(\d+)`)
+)
+
 func LoadTopic(root *ExtRoot, id int, nga *Client) (*Topic, error) {
 	dir, e := root.SafeOpenRoot(strconv.Itoa(id))
 	if e != nil {
@@ -68,12 +73,11 @@ func LoadTopic(root *ExtRoot, id int, nga *Client) (*Topic, error) {
 	topic := NewTopic(dir, id)
 
 	if dir.IsExist(POST_MARKDOWN) {
-		re := regexp.MustCompile(`\\<pid:0\\>\s+(\d{4}-\d{2}-\d{2}\s+\d{2}:\d{2}:\d{2})\s+by\s+([^(]+)(\(\d+\))?\s*<`)
 		if e := dir.EveryLine(POST_MARKDOWN, func(line string, i int) bool {
 			if i == 0 {
 				topic.Title = strings.TrimLeft(line, "# ")
 			} else if strings.HasPrefix(line, "#####") {
-				m := re.FindStringSubmatch(line)
+				m := regexAuthorInfo.FindStringSubmatch(line)
 				if m != nil {
 					t, e := time.Parse("2006-01-02 15:04:05", m[1])
 					if e != nil {
@@ -99,14 +103,32 @@ func LoadTopic(root *ExtRoot, id int, nga *Client) (*Topic, error) {
 						}
 					}
 
-					if topic.Uid == 0 {
+					if topic.Uid == 0 { // 1.6.0 及之前的版本没有 UID
 						go func() {
 							if u, e := nga.GetUser(topic.Author); e != nil {
-								log.Println("获取用户 ID 失败:", topic.Author, e)
+								log.Println("获取用户信息失败:", topic.Author, e)
 							} else {
+								topic.Author = u.Name
 								topic.Uid = u.Id
 							}
 						}()
+					} else if regexAuthorIsUID.MatchString(topic.Author) { // 部分用户的名称是 UIDxxxx, 用 uid 拼接出来的
+						m := regexAuthorIsUID.FindStringSubmatch(topic.Author)
+						if m != nil {
+							uid, e := strconv.Atoi(m[1])
+							if e != nil {
+								log.Println("解析用户 ID 失败:", m[1], e)
+							} else {
+								go func() {
+									if u, e := nga.GetUserById(uid); e != nil {
+										log.Println("获取用户信息失败:", topic.Author, e)
+									} else {
+										topic.Author = u.Name
+										topic.Uid = u.Id
+									}
+								}()
+							}
+						}
 					}
 
 					return false

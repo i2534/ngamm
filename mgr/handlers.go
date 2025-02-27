@@ -601,24 +601,29 @@ func (srv *Server) asset() func(c *gin.Context) {
 func (srv *Server) subscribeStatus() func(c *gin.Context) {
 	return func(c *gin.Context) {
 		name := c.Param("name")
-		if user, e := srv.nga.GetUser(name); e == nil {
-			c.JSON(http.StatusOK, user.Subscribed)
+		uid, e := strconv.Atoi(name)
+		if e == nil {
+			if user, e := srv.nga.GetUserById(uid); e == nil {
+				c.JSON(http.StatusOK, user.Subscribed)
+				return
+			}
 		} else {
-			c.JSON(http.StatusOK, false)
+			log.Println("解析用户 ID 失败:", name, e)
 		}
+		c.JSON(http.StatusOK, false)
 	}
 }
 func (srv *Server) subscribeBatchStatus() func(c *gin.Context) {
 	return func(c *gin.Context) {
-		var names []string
-		if e := c.ShouldBindJSON(&names); e != nil {
+		var uids []int
+		if e := c.ShouldBindJSON(&uids); e != nil {
 			c.JSON(http.StatusBadRequest, toErr("无效的请求数据"))
 			return
 		}
-		users := make(map[string]User)
-		for _, name := range names {
-			if user, e := srv.nga.GetUser(name); e == nil {
-				users[name] = user
+		users := make(map[int]User)
+		for _, uid := range uids {
+			if user, e := srv.nga.GetUserById(uid); e == nil {
+				users[uid] = user
 			}
 		}
 		c.JSON(http.StatusOK, users)
@@ -626,7 +631,12 @@ func (srv *Server) subscribeBatchStatus() func(c *gin.Context) {
 }
 func (srv *Server) subscribe() func(c *gin.Context) {
 	return func(c *gin.Context) {
-		name := c.Param("name")
+		uid, e := strconv.Atoi(c.Param("name"))
+		if e != nil {
+			c.JSON(http.StatusBadRequest, toErr("无效的用户 ID"))
+			return
+		}
+
 		cond := make([]string, 0)
 		if e := c.ShouldBindJSON(&cond); e != nil {
 			c.JSON(http.StatusBadRequest, toErr("无效的请求数据"))
@@ -637,9 +647,9 @@ func (srv *Server) subscribe() func(c *gin.Context) {
 				cond[i] = strings.TrimSpace(c)
 			}
 		}
-		if user, e := srv.nga.GetUser(name); e == nil {
+		if user, e := srv.nga.GetUserById(uid); e == nil {
 			if e = srv.nga.Subscribe(user.Id, true, cond...); e == nil {
-				user, _ = srv.nga.GetUser(name)
+				user, _ = srv.nga.GetUserById(uid)
 				c.JSON(http.StatusOK, user)
 			} else {
 				c.JSON(http.StatusInternalServerError, toErr(e.Error()))
@@ -651,8 +661,12 @@ func (srv *Server) subscribe() func(c *gin.Context) {
 }
 func (srv *Server) unsubscribe() func(c *gin.Context) {
 	return func(c *gin.Context) {
-		name := c.Param("name")
-		if user, e := srv.nga.GetUser(name); e == nil {
+		uid, e := strconv.Atoi(c.Param("name"))
+		if e != nil {
+			c.JSON(http.StatusBadRequest, toErr("无效的用户 ID"))
+			return
+		}
+		if user, e := srv.nga.GetUserById(uid); e == nil {
 			if e = srv.nga.Subscribe(user.Id, false); e == nil {
 				c.JSON(http.StatusOK, user.Id)
 			} else {

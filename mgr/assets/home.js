@@ -1,6 +1,6 @@
 function init(hasToken, ngaPostBase) {
     const origin = window.location.origin;
-    const headers = {}, users = {};
+    const headers = {};
     const sorts = { key: 'Id', order: 'desc' };
     const pageSize = 15;
     let lastList = new Date();
@@ -127,22 +127,23 @@ function init(hasToken, ngaPostBase) {
         renderPagination();
     }
 
-    const authors = new Map();
-    const changeSubscribeStatus = (author, subscribed) => {
-        const nss = authors.get(author);
-        if (nss) {
-            nss.forEach(ns => {
-                const filter = ((users[author] || {}).filter || []).join('\n\t');
-                ns.title = subscribed ? `点击取消订阅${(filter && filter.length) ? '\n  过滤规则:\n\t' + filter : ''}` : '点击订阅';
-                ns.classList.remove(subscribed ? 'unsubscribed' : 'subscribed');
-                ns.classList.add(subscribed ? 'subscribed' : 'unsubscribed');
+    const userSpans = new Map(), userInfos = new Map();;
+    const changeSubscribeStatus = (uid, subscribed) => {
+        const spans = userSpans.get(uid);
+        if (spans) {
+            spans.forEach(span => {
+                const filter = ((userInfos.get(uid) || {}).filter || []).join('\n\t');
+                span.title = subscribed ? `点击取消订阅${(filter && filter.length) ? '\n当前过滤规则:\n  ' + filter : ''}` : '点击订阅';
+                span.classList.remove(subscribed ? 'unsubscribed' : 'subscribed');
+                span.classList.add(subscribed ? 'subscribed' : 'unsubscribed');
             });
         }
     };
     function renderSubscribe(container) {
-        authors.clear();
+        userSpans.clear();
         container.querySelectorAll('span.author').forEach(span => {
             const author = span.innerText;
+            const uid = parseInt(span.getAttribute('uid'));
             const ns = document.createElement('span');
             ns.innerHTML = `&#9733;`;
             ns.classList.add('subscribe');
@@ -152,14 +153,14 @@ function init(hasToken, ngaPostBase) {
                     if (!confirm(`确认要取消订阅 ${author} ?`)) {
                         return;
                     }
-                    fetch(`${origin}/subscribe/${encodeURIComponent(author)}`, {
+                    fetch(`${origin}/subscribe/${uid}`, {
                         headers,
                         method: 'DELETE'
                     })
                         .then(async (r) => {
                             const data = await r.json();
                             if (r.ok) {
-                                changeSubscribeStatus(author, !subscribed);
+                                changeSubscribeStatus(uid, !subscribed);
                             } else {
                                 showAlert('操作失败', data.error);
                             }
@@ -167,18 +168,18 @@ function init(hasToken, ngaPostBase) {
                 } else {
                     const dialog = document.getElementById('subscribeDialog');
                     if (dialog) {
-                        document.getElementById('author').value = author;
-                        const user = users[author];
+                        document.getElementById('uid').value = uid;
+                        const user = userInfos.get(uid);
                         document.getElementById('subFilter').value = (user && user.filter) ? user.filter.join('\n') : '';
                         dialog.showModal();
                     }
                 }
             });
             span.insertAdjacentElement('afterend', ns);
-            let nss = authors.get(author);
+            let nss = userSpans.get(uid);
             if (!nss) {
                 nss = new Set();
-                authors.set(author, nss);
+                userSpans.set(uid, nss);
             }
             nss.add(ns);
         });
@@ -189,13 +190,14 @@ function init(hasToken, ngaPostBase) {
                 'Content-Type': 'application/json'
             },
             method: 'POST',
-            body: JSON.stringify([...authors.keys()])
+            body: JSON.stringify([...userSpans.keys()])
         }).then(async (r) => {
             const data = await r.json();
             if (r.ok) {
-                Object.entries(data).forEach(([author, info]) => {
-                    users[author] = info;
-                    changeSubscribeStatus(author, info.subscribed);
+                Object.entries(data).forEach(([uv, info]) => {
+                    const uid = parseInt(uv);
+                    userInfos.set(uid, info);
+                    changeSubscribeStatus(uid, info.subscribed);
                 });
             }
         });
@@ -466,10 +468,10 @@ function init(hasToken, ngaPostBase) {
     window.clearInput = (id) => document.getElementById(id).value = '';
     window.submitSubscribe = async () => {
         closeDialog('subscribeDialog');
-        const author = document.getElementById('author').value;
+        const uv = document.getElementById('uid').value;
         const filter = document.getElementById('subFilter').value.split('\n').map(s => s.trim()).filter(s => s.length > 0);
         try {
-            const response = await fetch(`${origin}/subscribe/${encodeURIComponent(author)}`, {
+            const response = await fetch(`${origin}/subscribe/${uv}`, {
                 headers,
                 method: 'POST',
                 body: JSON.stringify(filter)
@@ -478,8 +480,9 @@ function init(hasToken, ngaPostBase) {
             if (!response.ok) {
                 throw new Error(data.error);
             }
-            users[author] = data;
-            changeSubscribeStatus(author, data.subscribed);
+            const uid = parseInt(uv);
+            userInfos.set(uid, data);
+            changeSubscribeStatus(uid, data.subscribed);
         } catch (error) {
             showAlert(error.message);
         }

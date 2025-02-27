@@ -60,7 +60,6 @@ services:
 
 #### 配置 ngamm
 
-去到 https://github.com/i2534/ngamm/actions/runs/12195299390 , 找到 `Artifacts` 里下载 ngamm 程序(目前只有 linux 版本)
 将程序解压放到 `ngap2m` 文件夹同目录下, 执行
 ```
 chmod +x ngamm

@@ -56,6 +56,7 @@ func main() {
 	}
 
 	log.Printf("NGAMM 版本: %s @ %s\n", gitHash, buildTime)
+	log.Println("作者: i2534 [ https://github.com/i2534/ngamm ]")
 
 	program := filepath.Join(wd, opts.Program)
 	if !mgr.IsExist(program) {

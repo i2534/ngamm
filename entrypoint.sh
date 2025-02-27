@@ -9,12 +9,13 @@ else
 fi
 dir_np2md=$dir_work/np2md
 dir_data=$dir_work/data
+bin_url=https://github.com/ludoux/ngapost2md/releases/download/1.7.1/ngapost2md-NEO_1.7.1-linux-amd64.tar.gz
 if [ "$cmd" = "fetch" ]; then
-    echo "Fetch ngapost2md ..."
+    echo "Fetch ngapost2md from $bin_url ..."
     tmp=ngapost2md.bin
     dir=$dir_np2md
     mkdir -p $dir && cd $dir
-    wget -q -O $tmp https://github.com/ludoux/ngapost2md/releases/download/1.7.1/ngapost2md-NEO_1.7.1-linux-amd64.tar.gz
+    wget -q -O $tmp $bin_url
     tar -zxf $tmp -C .
     rm -f win_*
     rm -f $tmp
