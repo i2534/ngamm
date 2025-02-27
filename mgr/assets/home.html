@@ -27,6 +27,14 @@
     <button onclick="listTopics()">刷新列表</button>
     <div id="topics"></div>
     <div id="pagination"></div>
+    <dialog id="alertDialog">
+        <div class="dialog-content">
+            <p id="alertMessage"></p>
+            <div class="button-container">
+                <button onclick="closeDialog()">关闭</button>
+            </div>
+        </div>
+    </dialog>
     <dialog id="schedDialog">
         <div class="dialog-content">
             <h2>任务计划更新帖子设置</h2>
@@ -36,8 +44,10 @@
             <p>自动更新失败后最大重试次数<br />&nbsp;&nbsp;&nbsp;-1: 代表一直重试<br />&nbsp;&nbsp;&nbsp;&nbsp;0: 代表重试默认的
                 {{.DefaultMaxRetry}} 次</p>
             <input type="number" id="MaxRetryCount" aria-label="MaxRetryCount" min="-1">
-            <button onclick="submitSched()">确认</button>
-            <button onclick="closeDialog()">取消</button>
+            <div class="button-container">
+                <button onclick="submitSched()">确认</button>
+                <button onclick="closeDialog()">取消</button>
+            </div>
         </div>
     </dialog>
     <dialog id="subscribeDialog">
@@ -53,8 +63,10 @@
             <div>
                 <textarea id="subFilter" aria-label="subFilter" rows="5" style="width: 98%;"></textarea>
             </div>
-            <button onclick="submitSubscribe()">确认</button>
-            <button onclick="closeDialog()">取消</button>
+            <div class="button-container">
+                <button onclick="submitSubscribe()">确认</button>
+                <button onclick="closeDialog()">取消</button>
+            </div>
         </div>
     </dialog>
 </body>

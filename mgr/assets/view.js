@@ -14,10 +14,10 @@ function render(ngaBase, id, token, content) {
             }
             if (depth === 5) {// 楼层
                 let value = text.replace(/<span id="pid\d+">(.*?)<\/span>/g, '$1:'); // 与回复的统一化
-                value = value.replace(/(\d+)\.\[\d+\]\s*<pid:(\d+)>\s*(\d{4}-\d{2}-\d{2}\s*\d{2}:\d{2}:\d{2})\s*by\s*(.+?):/g,
+                value = value.replace(/(\d+)\.\[\d+\]\s*<pid:(\d+)>\s*(\d{4}-\d{2}-\d{2}\s*\d{2}:\d{2}:\d{2})\s*by\s*(.+?)(\(\d+\))?:/g,
                     `<h${depth} floor="$1">
                         <div id="pid$2" class="floor">
-                            <span class="num">$1</span><span class="author">$4</span><span class="time">$3</span>
+                            <span class="num">$1</span><span class="author" uid="$5">$4</span><span class="time">$3</span>
                         </div>
                     </h${depth}>`);
                 return value;
@@ -337,10 +337,27 @@ function render(ngaBase, id, token, content) {
 
             // 打开层主信息
             c.querySelectorAll('.floor>.author').forEach(e => {
-                e.addEventListener('click', function () {
-                    const name = e.textContent;
-                    window.open(`${ngaBase}/nuke.php?func=ucp&username=${GBK.URI.encodeURIComponent(name)}`);
-                });
+                let uid = e.getAttribute('uid');
+                let href;
+                if (uid && uid !== '') {
+                    if (uid.startsWith('(')) {
+                        uid = uid.substring(1);
+                    }
+                    if (uid.endsWith(')')) {
+                        uid = uid.substring(0, uid.length - 1);
+                    }
+                    href = `${ngaBase}/nuke.php?func=ucp&uid=${uid.trim()}`;
+                } else {
+                    href = `${ngaBase}/nuke.php?func=ucp&username=${GBK.URI.encodeURIComponent(e.textContent)}`;
+                }
+
+                const a = document.createElement('a');
+                a.href = href;
+                a.target = '_blank';
+                a.textContent = e.textContent;
+                a.className = e.className;
+
+                e.replaceWith(a);
             });
         }
     });

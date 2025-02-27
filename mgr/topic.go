@@ -40,6 +40,7 @@ type Topic struct {
 	Id       int
 	Title    string
 	Author   string
+	Uid      int // 用户 ID
 	Create   CustomTime
 	MaxPage  int
 	MaxFloor int
@@ -56,7 +57,7 @@ func NewTopic(root *ExtRoot, id int) *Topic {
 	}
 }
 
-func LoadTopic(root *ExtRoot, id int) (*Topic, error) {
+func LoadTopic(root *ExtRoot, id int, nga *Client) (*Topic, error) {
 	dir, e := root.SafeOpenRoot(strconv.Itoa(id))
 	if e != nil {
 		return nil, e
@@ -67,11 +68,11 @@ func LoadTopic(root *ExtRoot, id int) (*Topic, error) {
 	topic := NewTopic(dir, id)
 
 	if dir.IsExist(POST_MARKDOWN) {
-		re := regexp.MustCompile(`\\<pid:0\\>\s+(\d{4}-\d{2}-\d{2}\s+\d{2}:\d{2}:\d{2})\s+by\s+(.+)\s*<`)
+		re := regexp.MustCompile(`\\<pid:0\\>\s+(\d{4}-\d{2}-\d{2}\s+\d{2}:\d{2}:\d{2})\s+by\s+([^(]+)(\(\d+\))?\s*<`)
 		if e := dir.EveryLine(POST_MARKDOWN, func(line string, i int) bool {
 			if i == 0 {
 				topic.Title = strings.TrimLeft(line, "# ")
-			} else {
+			} else if strings.HasPrefix(line, "#####") {
 				m := re.FindStringSubmatch(line)
 				if m != nil {
 					t, e := time.Parse("2006-01-02 15:04:05", m[1])
@@ -82,6 +83,32 @@ func LoadTopic(root *ExtRoot, id int) (*Topic, error) {
 
 					topic.Create = FromTime(t)
 					topic.Author = m[2]
+
+					if len(m) > 3 {
+						val := m[3]
+						if val != "" {
+							val = val[1 : len(val)-1]
+						}
+						if val != "" {
+							uid, e := strconv.Atoi(val)
+							if e != nil {
+								log.Println("解析用户 ID 失败:", val, e)
+							} else {
+								topic.Uid = uid
+							}
+						}
+					}
+
+					if topic.Uid == 0 {
+						go func() {
+							if u, e := nga.GetUser(topic.Author); e != nil {
+								log.Println("获取用户 ID 失败:", topic.Author, e)
+							} else {
+								topic.Uid = u.Id
+							}
+						}()
+					}
+
 					return false
 				}
 			}

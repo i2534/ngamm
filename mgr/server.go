@@ -174,7 +174,7 @@ func (srv *Server) loadTopics() {
 				continue
 			}
 
-			topic, e := LoadTopic(cache.topicRoot, id)
+			topic, e := LoadTopic(cache.topicRoot, id, srv.nga)
 			if e != nil {
 				log.Println("加载帖子失败:", e)
 				continue
@@ -310,7 +310,7 @@ max_floor = -1`
 
 		ok, msg := srv.nga.DownTopic(id)
 		if ok {
-			topic, e := LoadTopic(cache.topicRoot, id)
+			topic, e := LoadTopic(cache.topicRoot, id, srv.nga)
 			if e != nil {
 				log.Println("加载帖子失败:", e)
 			} else {

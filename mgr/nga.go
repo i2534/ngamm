@@ -295,6 +295,8 @@ func (c *Client) getHTML(url string) (string, error) {
 	req.Header.Set("User-Agent", c.GetUA())
 	req.Header.Set("Cookie", "ngaPassportUid="+c.uid+"; ngaPassportCid="+c.cid)
 
+	log.Printf("请求 %s\n", url)
+
 	resp, e := DoHttp(req)
 	if e != nil {
 		return "", fmt.Errorf("请求 %s 失败: %w", url, e)
@@ -313,6 +315,9 @@ func (c *Client) getHTML(url string) (string, error) {
 }
 
 func (c *Client) GetUser(username string) (User, error) {
+	if username == "" {
+		return User{}, fmt.Errorf("用户名为空")
+	}
 	if u, ok := c.users.Get(username); ok {
 		return u, nil
 	}

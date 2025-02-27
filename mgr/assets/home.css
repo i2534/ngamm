@@ -123,9 +123,15 @@ dialog::backdrop {
     border-radius: 5px;
 }
 
+.dialog-content .button-container {
+    display: flex;
+    justify-content: center;
+    gap: 10px;
+    margin-top: 20px;
+}
+
 .dialog-content button {
     padding: 10px 20px;
-    margin: 10px 5px;
     border: none;
     cursor: pointer;
 }

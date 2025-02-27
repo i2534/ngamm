@@ -101,7 +101,7 @@ function init(hasToken, ngaPostBase) {
         <tr>
             <td><a href="${ngaPostBase}${topic.Id}" target="_blank">${topic.Id}</a></td>
             <td><span class="title" title="${topic.Title}">${topic.Title}</span></td>
-            <td><span class="author">${topic.Author}</span></td>
+            <td><span class="author" uid="${topic.Uid}">${topic.Author}</span></td>
             <td>${topic.MaxFloor}</td>
             <td><span class="update-${topic.Result.Success ? 'success' : 'failed'}">${topic.Result.Time}</span></td>
             <td>${topic.Metadata.UpdateCron}</td>
@@ -161,7 +161,7 @@ function init(hasToken, ngaPostBase) {
                             if (r.ok) {
                                 changeSubscribeStatus(author, !subscribed);
                             } else {
-                                alert('操作失败', data.error);
+                                showAlert('操作失败', data.error);
                             }
                         });
                 } else {
@@ -279,14 +279,14 @@ function init(hasToken, ngaPostBase) {
             topics = await fetchTopics();
             sortTopics();
         } catch (error) {
-            alert(error.message);
+            showAlert(error.message);
         }
     }
 
     async function createTopic() {
         let id = document.getElementById('createId').value.trim();
         if (!id) {
-            alert('请输入帖子 ID 或链接');
+            showAlert('请输入帖子 ID 或链接');
             return;
         }
         if (!/^\d+$/.test(id)) {
@@ -294,7 +294,7 @@ function init(hasToken, ngaPostBase) {
             if (match) {
                 id = match[1];
             } else {
-                alert('帖子 ID 格式错误');
+                showAlert('帖子 ID 格式错误');
                 return;
             }
         }
@@ -304,7 +304,7 @@ function init(hasToken, ngaPostBase) {
             if (!response.ok) {
                 throw new Error(data.error);
             }
-            alert(`帖子 ${data} 创建成功`);
+            showAlert(`帖子 ${data} 创建成功`);
             // listTopics();
             const topic = await fetchTopics(id);
             if (topic) {
@@ -312,7 +312,7 @@ function init(hasToken, ngaPostBase) {
                 renderTopics();
             }
         } catch (error) {
-            alert(error.message);
+            showAlert(error.message);
         }
     }
 
@@ -324,14 +324,14 @@ function init(hasToken, ngaPostBase) {
                 if (!response.ok) {
                     throw new Error(data.error);
                 }
-                alert(`删除帖子 ${data} 成功`);
+                showAlert(`删除帖子 ${data} 成功`);
                 // listTopics();
                 dealTopic(id, (_, index) => {
                     topics.splice(index, 1);
                     renderTopics();
                 });
             } catch (error) {
-                alert(error.message);
+                showAlert(error.message);
             }
         }
     }
@@ -348,7 +348,7 @@ function init(hasToken, ngaPostBase) {
         }
     }
     async function submitSched() {
-        closeDialog();
+        closeDialog('schedDialog');
         const id = document.getElementById('TopicID').value;
         const cron = document.getElementById('UpdateCron').value.trim();
         const maxRetryCount = document.getElementById('MaxRetryCount').value;
@@ -362,7 +362,7 @@ function init(hasToken, ngaPostBase) {
             if (!response.ok) {
                 throw new Error(data.error);
             }
-            alert(`更新计划 ${data} 成功`);
+            showAlert(`更新计划 ${data} 成功`);
             // listTopics();
 
             const topic = await fetchTopics(id);
@@ -373,7 +373,7 @@ function init(hasToken, ngaPostBase) {
                 });
             }
         } catch (error) {
-            alert(error.message);
+            showAlert(error.message);
         }
     }
 
@@ -431,7 +431,7 @@ function init(hasToken, ngaPostBase) {
             if (!response.ok) {
                 throw new Error(data.error);
             }
-            alert(`帖子 ${data} 已加入更新队列`);
+            showAlert(`帖子 ${data} 已加入更新队列`);
             // listTopics();
             const topic = await fetchTopics(id);
             if (topic) {
@@ -441,8 +441,15 @@ function init(hasToken, ngaPostBase) {
                 });
             }
         } catch (error) {
-            alert(error.message);
+            showAlert(error.message);
         }
+    }
+
+    function showAlert(message) {
+        closeDialog('alertDialog');
+        const dialog = document.getElementById('alertDialog');
+        document.getElementById('alertMessage').textContent = message;
+        dialog.showModal();
     }
 
     window.setAuthToken = setAuthToken;
@@ -453,11 +460,12 @@ function init(hasToken, ngaPostBase) {
     window.schedTopic = schedTopic;
     window.viewTopic = viewTopic;
     window.freshTopic = freshTopic;
+    window.showAlert = showAlert;
     window.submitSched = submitSched;
     window.closeDialog = closeDialog;
     window.clearInput = (id) => document.getElementById(id).value = '';
     window.submitSubscribe = async () => {
-        closeDialog();
+        closeDialog('subscribeDialog');
         const author = document.getElementById('author').value;
         const filter = document.getElementById('subFilter').value.split('\n').map(s => s.trim()).filter(s => s.length > 0);
         try {
@@ -473,7 +481,7 @@ function init(hasToken, ngaPostBase) {
             users[author] = data;
             changeSubscribeStatus(author, data.subscribed);
         } catch (error) {
-            alert(error.message);
+            showAlert(error.message);
         }
     };
 

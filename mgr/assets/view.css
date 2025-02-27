@@ -83,7 +83,7 @@ code {
 .floor>.author {
     font-size: 1em;
     margin: 0 0.8em;
-    cursor: pointer;
+    color: inherit;
 }
 
 .floor>.time {
