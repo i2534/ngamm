@@ -28,7 +28,7 @@ WORKDIR /app
 # 从构建阶段复制二进制文件和脚本文件
 COPY --from=builder /app/main .
 # COPY --from=builder /app/entrypoint.sh .
-# COPY entrypoint.sh .
+COPY entrypoint.sh .
 # 设置环境变量
 # ENV TOKEN=""
 # 赋予脚本执行权限并执行脚本
