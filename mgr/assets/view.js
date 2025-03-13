@@ -356,6 +356,9 @@ function render(ngaBase, id, token, content) {
                 a.target = '_blank';
                 a.textContent = e.textContent;
                 a.className = e.className;
+                if (uid && uid !== '') {
+                    a.setAttribute('uid', uid);
+                }
 
                 e.replaceWith(a);
             });

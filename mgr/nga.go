@@ -328,20 +328,25 @@ func (c *Client) getHTML(url string) (string, error) {
 	if e != nil {
 		return "", fmt.Errorf("请求 %s 失败: %w", url, e)
 	}
-	defer resp.Body.Close()
+	reader, e := BodyReader(resp)
+	if e != nil {
+		reader.Close()
+		return "", fmt.Errorf("获取响应体失败: %w", e)
+	}
+	defer reader.Close()
 
 	if resp.StatusCode != http.StatusOK {
 		return "", fmt.Errorf("请求 %s 失败, 状态码 %d", url, resp.StatusCode)
 	}
 
-	data, e := GBKReadAll(resp.Body)
+	data, e := GBKReadAll(reader)
 	if e != nil {
 		return "", fmt.Errorf("解码响应失败: %w", e)
 	}
 	return string(data), nil
 }
 func (c *Client) extractUserInfo(html string, username string) (User, error) {
-	if strings.Contains(html, "找不到用户") {
+	if strings.Contains(html, "找不到用户") || strings.Contains(html, "无此用户") {
 		c.users.Fail(username, "找不到用户")
 		return User{}, fmt.Errorf("未找到用户")
 	}

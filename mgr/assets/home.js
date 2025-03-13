@@ -37,7 +37,7 @@ function init(hasToken, ngaPostBase) {
         if (token) {
             document.getElementById('authToken').value = token;
             headers.Authorization = token;
-            showTokenSection();
+            // showTokenSection();
         }
     }
 
@@ -59,7 +59,7 @@ function init(hasToken, ngaPostBase) {
             throw new Error('需要设置 Token');
         }
         if (!response.ok) {
-            throw new Error('Failed to fetch topics');
+            throw new Error('获取帖子列表失败');
         }
         const ret = await response.json();
         if (!id) {
@@ -208,8 +208,12 @@ function init(hasToken, ngaPostBase) {
         const pagination = document.getElementById('pagination');
         pagination.innerHTML = '';
 
+        const totalTopics = document.createElement('span');
+        totalTopics.innerText = `共 ${topics.length} 条 `;
+        pagination.appendChild(totalTopics);
+
         const firstButton = document.createElement('button');
-        firstButton.innerText = '|<';
+        firstButton.innerText = '⏮';
         firstButton.onclick = () => {
             currentPage = 1;
             renderTopics();
@@ -217,7 +221,7 @@ function init(hasToken, ngaPostBase) {
         pagination.appendChild(firstButton);
 
         const prevButton = document.createElement('button');
-        prevButton.innerText = '<';
+        prevButton.innerText = '◀';
         prevButton.onclick = () => {
             currentPage = Math.max(1, currentPage - 1);
             renderTopics();
@@ -225,7 +229,7 @@ function init(hasToken, ngaPostBase) {
         pagination.appendChild(prevButton);
 
         const nextButton = document.createElement('button');
-        nextButton.innerText = '>';
+        nextButton.innerText = '▶';
         nextButton.onclick = () => {
             currentPage = Math.min(totalPages, currentPage + 1);
             renderTopics();
@@ -233,7 +237,7 @@ function init(hasToken, ngaPostBase) {
         pagination.appendChild(nextButton);
 
         const lastButton = document.createElement('button');
-        lastButton.innerText = '>|';
+        lastButton.innerText = '⏭';
         lastButton.onclick = () => {
             currentPage = totalPages;
             renderTopics();

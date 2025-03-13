@@ -2,6 +2,7 @@ package mgr
 
 import (
 	"bufio"
+	"compress/gzip"
 	"crypto/sha1"
 	"encoding/json"
 	"fmt"
@@ -316,4 +317,16 @@ func HttpClient() *http.Client {
 
 func DoHttp(req *http.Request) (*http.Response, error) {
 	return hc.Do(req)
+}
+
+func BodyReader(resp *http.Response) (io.ReadCloser, error) {
+	reader := resp.Body
+	if strings.Contains(resp.Header.Get("Content-Encoding"), "gzip") {
+		gzr, e := gzip.NewReader(resp.Body)
+		if e != nil {
+			return reader, e
+		}
+		reader = gzr
+	}
+	return reader, nil
 }
