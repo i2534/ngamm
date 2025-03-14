@@ -25,6 +25,20 @@ func TestExtRootOpenRoot(t *testing.T) {
 		sub.Close()
 		t.Log(root.Remove("xxx"))
 	}
+
+	if sub, e := root.SafeOpenRoot("assets"); e != nil {
+		t.Fatal(e)
+	} else {
+		t.Log(sub.AbsPath())
+		sub.Close()
+	}
+
+	if sub, e := root.SafeOpenRoot("."); e != nil {
+		t.Fatal(e)
+	} else {
+		t.Log(sub.AbsPath())
+		sub.Close()
+	}
 }
 func TestExtRootReadDir(t *testing.T) {
 	root, e := mgr.OpenRoot(".")
@@ -107,5 +121,23 @@ func TestExtRootWriteAll(t *testing.T) {
 
 	if e := root.WriteAll("output/test.txt", []byte("hello, world!")); e != nil {
 		t.Fatal(e)
+	}
+}
+
+func TestExtRootAbsPath2(t *testing.T) {
+	root, e := mgr.OpenRoot(".")
+	if e != nil {
+		t.Fatal(e)
+	}
+	defer root.Close()
+
+	t.Log(root.AbsPath())
+	t.Log(root.Name())
+
+	if p, e := root.AbsPath("utils_test.go"); e != nil {
+		t.Fatal(e)
+	} else {
+		t.Log(p)
+		assert.NotEqual(t, p, "")
 	}
 }

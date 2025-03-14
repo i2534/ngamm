@@ -244,11 +244,12 @@ func (srv *Server) topicDel() func(c *gin.Context) {
 				return
 			}
 
-			recycles, e := cache.topicRoot.AbsPath(DIR_RECYCLE_BIN)
+			root, e := cache.topicRoot.AbsPath()
 			if e != nil {
-				log.Println("获取回收站绝对路径失败:", e)
+				log.Println("获取帖子根目录绝对路径失败:", e)
 				return
 			}
+			recycles := filepath.Join(root, DIR_RECYCLE_BIN)
 			if e := os.MkdirAll(recycles, COMMON_DIR_MODE); e != nil {
 				log.Println("创建回收站失败:", recycles, e)
 

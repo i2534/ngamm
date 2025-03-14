@@ -277,10 +277,35 @@ function render(ngaBase, id, token, content) {
                             }
                         });
                         observer.unobserve(tar);
+
+                        switch (tar.tagName.toLowerCase()) {
+                            case 'img':
+                            case 'video':
+                                tar.addEventListener('click', function () {
+                                    displayBigMedia(tar);
+                                });
+                                break;
+                        }
                     }
                 }, 100);
             });
     });
+
+    function displayBigMedia(media) {
+        // 创建一个遮罩层
+        const overlay = document.createElement('div');
+        overlay.classList.add('overlay');
+        // 点击遮罩层关闭
+        overlay.addEventListener('click', () => {
+            overlay.remove();
+        });
+        // 将克隆的媒体元素添加到遮罩层
+        const nm = document.createElement(media.tagName);
+        nm.src = media.src;
+        overlay.appendChild(nm);
+        // 将遮罩层添加到页面
+        document.body.appendChild(overlay);
+    }
 
     window.addEventListener('load', () => {
         const c = document.querySelector('#content');
@@ -362,6 +387,7 @@ function render(ngaBase, id, token, content) {
 
                 e.replaceWith(a);
             });
+
         }
     });
 }

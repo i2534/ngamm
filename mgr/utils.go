@@ -68,6 +68,7 @@ func Local() *time.Location {
 
 type ExtRoot struct {
 	*os.Root
+	path string
 }
 
 func OpenRoot(path string) (*ExtRoot, error) {
@@ -80,9 +81,9 @@ func OpenRoot(path string) (*ExtRoot, error) {
 	if e != nil {
 		return nil, e
 	}
-	return &ExtRoot{Root: r}, nil
+	return &ExtRoot{Root: r, path: path}, nil
 }
-func (r *ExtRoot) join(path ...string) string {
+func (r ExtRoot) join(path ...string) string {
 	fn := "."
 	if len(path) > 0 {
 		fn = filepath.Join(path...)
@@ -100,7 +101,7 @@ func (r *ExtRoot) SafeOpenRoot(path ...string) (*ExtRoot, error) {
 	if e != nil {
 		return nil, e
 	}
-	return &ExtRoot{sub}, nil
+	return &ExtRoot{Root: sub, path: r.join(r.path, p)}, nil
 }
 func (r *ExtRoot) ReadDir(path ...string) ([]fs.DirEntry, error) {
 	f, e := r.Open(r.join(path...))
@@ -111,12 +112,7 @@ func (r *ExtRoot) ReadDir(path ...string) ([]fs.DirEntry, error) {
 	return f.ReadDir(-1)
 }
 func (r *ExtRoot) AbsPath(path ...string) (string, error) {
-	f, e := r.Open(r.join(path...))
-	if e != nil {
-		return "", e
-	}
-	defer f.Close()
-	return filepath.Abs(f.Name())
+	return filepath.Abs(r.join(r.path, r.join(path...)))
 }
 func (r *ExtRoot) IsExist(path ...string) bool {
 	if _, e := r.Stat(r.join(path...)); os.IsNotExist(e) {

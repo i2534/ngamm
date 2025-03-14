@@ -108,6 +108,10 @@ func (u *users) GetByUid(uid int) (User, userState) {
 	u.lock.RLock()
 	defer u.lock.RUnlock()
 
+	if _, has := u.failed[fmt.Sprintf("UID%d", uid)]; has {
+		return User{}, state_fail
+	}
+
 	for _, user := range u.data {
 		if user.Id == uid {
 			return user, state_have
@@ -179,18 +183,18 @@ type Client struct {
 
 func InitNGA(program string) (*Client, error) {
 	dir := filepath.Dir(program)
-	root, e := OpenRoot(dir)
+	er, e := OpenRoot(dir)
 	if e != nil {
 		return nil, e
 	}
-	ur, e := root.SafeOpenRoot(USER_DIR)
+	ur, e := er.SafeOpenRoot(USER_DIR)
 	if e != nil {
 		return nil, e
 	}
 
 	client := &Client{
 		program: program,
-		root:    root,
+		root:    er,
 		users: &users{
 			root:   ur,
 			lock:   &sync.RWMutex{},
@@ -346,7 +350,7 @@ func (c *Client) getHTML(url string) (string, error) {
 	return string(data), nil
 }
 func (c *Client) extractUserInfo(html string, username string) (User, error) {
-	if strings.Contains(html, "找不到用户") || strings.Contains(html, "无此用户") {
+	if strings.Contains(html, "找不到用户") || strings.Contains(html, "无此用户") || strings.Contains(html, "参数错误") {
 		c.users.Fail(username, "找不到用户")
 		return User{}, fmt.Errorf("未找到用户")
 	}
