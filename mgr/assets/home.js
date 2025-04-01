@@ -244,7 +244,40 @@ function init(hasToken, ngaPostBase) {
         }
         pagination.appendChild(lastButton);
 
-        for (let i = 1; i <= totalPages; i++) {
+        // 需要显示的页码集合
+        const pagesToShow = new Set();
+        // 始终显示前2页
+        for (let i = 1; i <= Math.min(2, totalPages); i++) {
+            pagesToShow.add(i);
+        }
+        // 始终显示最后2页
+        for (let i = Math.max(1, totalPages - 1); i <= totalPages; i++) {
+            pagesToShow.add(i);
+        }
+        // 显示当前页
+        pagesToShow.add(currentPage);
+        // 显示当前页前后2页
+        for (let i = currentPage - 2; i <= currentPage + 2; i++) {
+            if (i > 0 && i <= totalPages) {
+                pagesToShow.add(i);
+            }
+        }
+        // 将页码转为数组并排序
+        const pageArray = Array.from(pagesToShow).sort((a, b) => a - b);
+        // 渲染页码按钮
+        let prevPage = 0;
+        for (const page of pageArray) {
+            // 在页码之间添加省略号
+            if (page - prevPage > 1) {
+                addEllipsis();
+            }
+
+            addPageButton(page);
+            prevPage = page;
+        }
+
+        // 辅助函数：添加页码按钮
+        function addPageButton(i) {
             const pb = document.createElement('button');
             pb.innerText = i;
             pb.onclick = () => {
@@ -255,6 +288,14 @@ function init(hasToken, ngaPostBase) {
                 pb.classList.add('active');
             }
             pagination.appendChild(pb);
+        }
+
+        // 辅助函数：添加省略号
+        function addEllipsis() {
+            const ellipsis = document.createElement('span');
+            ellipsis.innerText = '...';
+            ellipsis.classList.add('pagination-ellipsis');
+            pagination.appendChild(ellipsis);
         }
     }
 
