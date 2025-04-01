@@ -6,6 +6,7 @@ function init(hasToken, ngaPostBase) {
     let lastList = new Date();
     let topics = [];
     let currentPage = 1;
+    let searchText = ''; // 添加搜索文本变量
 
     function dealTopic(id, callback) {
         if (!id || !topics || topics.length === 0) {
@@ -82,9 +83,23 @@ function init(hasToken, ngaPostBase) {
         return ts;
     }
 
+    // 添加搜索函数
+    function searchTopics(text) {
+        searchText = text.toLowerCase();
+        currentPage = 1; // 重置为第一页
+        renderTopics();
+    }
+
     function renderTopics() {
+        // 过滤列表
+        const filteredTopics = searchText ? topics.filter(topic =>
+            String(topic.Id).includes(searchText) ||
+            topic.Title.toLowerCase().includes(searchText) ||
+            topic.Author.toLowerCase().includes(searchText)
+        ) : topics;
+
         const start = (currentPage - 1) * pageSize;
-        const paginated = topics.slice(start, start + pageSize);
+        const paginated = filteredTopics.slice(start, start + pageSize);
 
         const ths = `
         <tr>
@@ -124,7 +139,7 @@ function init(hasToken, ngaPostBase) {
 
         renderSubscribe(container);
 
-        renderPagination();
+        renderPagination(filteredTopics);
     }
 
     const userSpans = new Map(), userInfos = new Map();;
@@ -203,7 +218,7 @@ function init(hasToken, ngaPostBase) {
         });
     }
 
-    function renderPagination() {
+    function renderPagination(topics) {
         const totalPages = Math.ceil(topics.length / pageSize);
         const pagination = document.getElementById('pagination');
         pagination.innerHTML = '';
@@ -536,6 +551,11 @@ function init(hasToken, ngaPostBase) {
     window.addEventListener('load', () => {
         loadAuthToken();
         listTopics();
+        document.getElementById('searchInput').addEventListener('input', (e) => searchTopics(e.target.value));
+        document.getElementById('clearSearchInput').addEventListener('click', () => {
+            clearInput('searchInput');
+            searchTopics('');
+        });
         setInterval(listTopics, 60000);
     });
 }
