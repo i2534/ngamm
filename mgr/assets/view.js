@@ -241,10 +241,28 @@ function render(ngaBase, id, token, content) {
             alert('未找到指定楼层');
         }
     };
-    window.toggleJumpMenu = function () {
-        const menu = document.querySelector('#jumpMenu');
+    window.toggleOptionMenu = function () {
+        const menu = document.querySelector('#optionMenu');
         menu.classList.toggle('hidden');
     };
+    window.copyTopicId = function () {
+        const menu = document.querySelector('#optionMenu');
+        const tid = menu.querySelector('#topicId').textContent;
+        navigator.clipboard.writeText(tid).then(() => {
+            // 显示复制成功的提示
+            const copyButton = menu.querySelector('.copy-button');
+            const originalText = copyButton.textContent;
+            copyButton.textContent = '已复制';
+
+            // 2秒后恢复按钮文本
+            setTimeout(() => {
+                copyButton.textContent = originalText;
+            }, 2000);
+        }).catch(err => {
+            console.error('复制失败:', err);
+            alert('复制ID失败，请手动复制');
+        });
+    }
 
     const observer = new IntersectionObserver((entries, observer) => {
         entries.filter(e => e.isIntersecting)

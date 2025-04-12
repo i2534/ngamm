@@ -104,29 +104,61 @@ code {
     z-index: 1000;
 }
 
-.jump-menu {
+/* 添加到view.css文件中 */
+.option-menu {
     position: fixed;
     top: 50px;
     right: 10px;
     background-color: #fff8e7;
     border: 1px solid #591804;
-    padding: 5px;
+    padding: 10px;
     z-index: 1000;
+    border-radius: 5px;
+    box-shadow: 0 2px 5px rgba(0, 0, 0, 0.2);
 }
 
-.jump-menu input {
-    width: 100px;
+.option-item {
+    margin-bottom: 8px;
+    display: flex;
+    align-items: center;
+}
+
+.option-item:last-child {
+    margin-bottom: 0;
+}
+
+.option-menu #topicId {
+    font-family: monospace;
+    font-size: 1.2em;
+    font-weight: bold;
+    background-color: #f0e6d0;
+    padding: 3px 5px;
+    border-radius: 3px;
+    margin: 0 5px;
+    max-width: 120px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.option-menu input {
+    width: 80px;
     padding: 5px;
-    margin-right: 10px;
+    margin-right: 5px;
+    border: 1px solid #e6c3a8;
+    border-radius: 3px;
 }
 
-.jump-menu button {
+.option-menu button {
     padding: 5px 10px;
-    background-color: rgb(245, 232, 203);
-    color: #1a3959;
+    background-color: #591804;
+    color: white;
     border: none;
-    border-radius: 1px;
+    border-radius: 3px;
     cursor: pointer;
+}
+
+.option-menu button:hover {
+    background-color: #7a2205;
 }
 
 .overlay {

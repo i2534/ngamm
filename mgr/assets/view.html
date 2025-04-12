@@ -21,10 +21,16 @@
 <body>
     <div id="content"></div>
     <div>由 <a href="https://github.com/i2534/ngamm" target="_blank">NGAMM</a> 提供管理</div>
-    <button id="jumpButton" class="floating-button" onclick="toggleJumpMenu()">跳转</button>
-    <div id="jumpMenu" class="jump-menu hidden">
-        <input type="number" id="floorInput" placeholder="楼层号" min="0" step="1">
-        <button onclick="jumpToFloor()">跳转</button>
+    <button id="optionButton" class="floating-button" onclick="toggleOptionMenu()">功能</button>
+    <div id="optionMenu" class="option-menu hidden">
+        <div class="option-item">
+            <span id="topicId">{{.ID}}</span>
+            <button onclick="copyTopicId()" class="copy-button">复制</button>
+        </div>
+        <div class="option-item">
+            <input type="number" id="floorInput" placeholder="楼层号" min="0" step="1">
+            <button onclick="jumpToFloor()">跳转</button>
+        </div>
     </div>
     <div class="hidden" id="loading" style="width: 100px; height: 100px; margin: 0; padding: 0;">
         <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100" preserveAspectRatio="xMidYMid" width="100%"
