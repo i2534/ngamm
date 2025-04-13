@@ -33,11 +33,10 @@ var (
 	TIME_LOC          = Local()
 )
 
-type Config struct {
+type SrvCfg struct {
+	Config    *Config
 	Addr      string
-	Token     string
 	tokenHash string
-	Smile     string
 	GitHash   string
 }
 
@@ -48,6 +47,7 @@ type cache struct {
 	topics    *SyncMap[int, *Topic] // all topics
 	queue     chan int              // adding or update topic id
 	smile     *Smile
+	pans      *SyncMap[string, Pan]
 }
 
 func (c *cache) Close() error {
@@ -55,12 +55,17 @@ func (c *cache) Close() error {
 		topic.Close()
 	})
 	close(c.queue)
+	if c.pans != nil {
+		c.pans.EAC(func(_ string, pan Pan) {
+			pan.Close()
+		})
+	}
 	return c.topicRoot.Close()
 }
 
 type Server struct {
 	Raw      *http.Server
-	Cfg      *Config
+	Cfg      *SrvCfg
 	nga      *Client
 	stopped  bool
 	stopChan chan struct{}
@@ -106,7 +111,7 @@ func formatTimestamp(timestamp time.Time) string {
 	}
 }
 
-func NewServer(cfg *Config, nga *Client) (*Server, error) {
+func NewServer(cfg *SrvCfg, nga *Client) (*Server, error) {
 	tr, e := nga.GetRoot().SafeOpenRoot(DIR_TOPIC_ROOT)
 	if e != nil {
 		return nil, e
@@ -135,8 +140,8 @@ func NewServer(cfg *Config, nga *Client) (*Server, error) {
 	if e := srv.init(engine); e != nil {
 		return nil, e
 	}
-	if cfg.Token != "" {
-		cfg.tokenHash = ShortSha1(cfg.Token)
+	if cfg.Config.Token != "" {
+		cfg.tokenHash = ShortSha1(cfg.Config.Token)
 	}
 
 	nga.srv = srv
@@ -321,6 +326,10 @@ max_floor = -1`
 				topic.Metadata.retryCount = 0
 
 				cache.topics.Put(id, topic)
+
+				if cache.pans != nil {
+					go topic.TryTransfer(cache.pans)
+				}
 			}
 		} else {
 			if topic, has := cache.topics.Get(id); has {
@@ -347,7 +356,7 @@ max_floor = -1`
 						// 放弃更新
 						log.Printf("放弃更新帖子 %d\n", id)
 						md.Abandon = true
-						go topic.Save()
+						go topic.SaveMeta()
 					}
 				}
 			}
@@ -367,6 +376,18 @@ func (srv *Server) getTopics(username string) []*Topic {
 		}
 	}
 	return ret
+}
+
+func (srv *Server) SetNetPan(pan Pan) {
+	cache := srv.cache
+	cache.lock.Lock()
+	defer cache.lock.Unlock()
+	if cache.pans == nil {
+		cache.pans = NewSyncMap[string, Pan]()
+	}
+	if pan != nil {
+		cache.pans.Put(pan.Name(), pan)
+	}
 }
 
 // 启动服务器并阻塞

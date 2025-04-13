@@ -27,7 +27,7 @@ const (
 )
 
 func (srv *Server) regHandlers() {
-	has := srv.Cfg.Token != ""
+	has := srv.Cfg.Config.Token != ""
 
 	r := srv.Raw.Handler.(*gin.Engine)
 	r.Use(gzip.Gzip(gzip.DefaultCompression))
@@ -89,7 +89,7 @@ func toErr(msg string) gin.H {
 func (srv *Server) topicMiddleware() gin.HandlerFunc {
 	return func(c *gin.Context) {
 		token := c.GetHeader("Authorization")
-		if token != srv.Cfg.Token {
+		if token != srv.Cfg.Config.Token {
 			c.JSON(http.StatusUnauthorized, toErr("未授权"))
 			c.Abort()
 			return
@@ -173,7 +173,7 @@ func (srv *Server) addTopic(id int) error {
 	select {
 	case cache.queue <- id:
 		srv.addCron(topic)
-		go topic.Save()
+		go topic.SaveMeta()
 
 		// 刚创建的帖子, 先更新几次, 以便快速获取内容
 		intervals := []time.Duration{
@@ -304,7 +304,7 @@ func (srv *Server) topicUpdate() func(c *gin.Context) {
 		srv.addCron(topic)
 		topic.Stop()
 		topic.Modify()
-		go topic.Save()
+		go topic.SaveMeta()
 
 		c.JSON(http.StatusOK, id)
 	}
@@ -475,7 +475,7 @@ func (srv *Server) replaySmile(c *gin.Context, name string) {
 		}
 	}
 
-	if srv.Cfg.Smile == "web" {
+	if srv.Cfg.Config.Smile == "web" {
 		url := cache.smile.URL(name)
 		if url == "" {
 			log.Printf("未找到表情 %s\n", name)
@@ -564,7 +564,7 @@ func (srv *Server) homePage() func(c *gin.Context) {
 			Version         string
 			DefaultMaxRetry int
 		}{
-			HasToken:        srv.Cfg.Token != "",
+			HasToken:        srv.Cfg.Config.Token != "",
 			BaseUrl:         srv.nga.BaseURL(),
 			Version:         srv.Cfg.GitHash,
 			DefaultMaxRetry: DEFAULT_MAX_RETRY,

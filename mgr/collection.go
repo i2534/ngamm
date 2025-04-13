@@ -3,13 +3,13 @@ package mgr
 import "sync"
 
 type SyncMap[K comparable, V any] struct {
-	lock sync.RWMutex
+	lock *sync.RWMutex
 	raw  map[K]V
 }
 
 func NewSyncMap[K comparable, V any]() *SyncMap[K, V] {
 	return &SyncMap[K, V]{
-		lock: sync.RWMutex{},
+		lock: &sync.RWMutex{},
 		raw:  make(map[K]V),
 	}
 }

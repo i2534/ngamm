@@ -24,6 +24,14 @@ const (
 	COMMON_FILE_MODE os.FileMode = 0644
 )
 
+var (
+	userAgent string
+)
+
+func ChangeUserAgent(ua string) {
+	userAgent = ua
+}
+
 type CustomTime struct {
 	time.Time
 }
@@ -325,4 +333,39 @@ func BodyReader(resp *http.Response) (io.ReadCloser, error) {
 		reader = gzr
 	}
 	return reader, nil
+}
+
+func Download(url string, Writer io.Writer) error {
+	req, e := http.NewRequest(http.MethodGet, url, nil)
+	if e != nil {
+		return e
+	}
+	if userAgent != "" {
+		req.Header.Set("User-Agent", userAgent)
+	}
+	resp, e := DoHttp(req)
+	if e != nil {
+		return e
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		return fmt.Errorf("下载失败, 状态码: %d", resp.StatusCode)
+	}
+
+	reader, e := BodyReader(resp)
+	if e != nil {
+		return e
+	}
+	defer reader.Close()
+
+	_, e = io.Copy(Writer, reader)
+	return e
+}
+
+func JoinPath(base, name string) string {
+	if strings.HasPrefix(name, "/") {
+		return name
+	}
+	return filepath.Join(base, name)
 }

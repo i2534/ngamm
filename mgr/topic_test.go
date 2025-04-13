@@ -3,6 +3,8 @@ package mgr_test
 import (
 	"regexp"
 	"testing"
+
+	"github.com/i2534/ngamm/mgr"
 )
 
 var (
@@ -47,4 +49,29 @@ func TestIsUID(t *testing.T) {
 	if regexAuthorIsUID.MatchString("lukaka_1901") {
 		t.Error("Is UID failed")
 	}
+}
+
+func TestGetPanMetadata(t *testing.T) {
+	dir, e := mgr.OpenRoot("/workspaces/ngamm/ngapost2md/43809596")
+	if e != nil {
+		t.Error("Open root failed:", e)
+		return
+	}
+	topic := mgr.NewTopic(dir, 0)
+	if m, e := topic.GetPanMetadata(); e != nil {
+		t.Error("Get pan metadata failed:", e)
+	} else {
+		t.Log("Get pan metadata:", m)
+	}
+}
+
+func TestTryTransfer(t *testing.T) {
+	dir, e := mgr.OpenRoot("/workspaces/ngamm/ngapost2md/43809567")
+	if e != nil {
+		t.Error("Open root failed:", e)
+		return
+	}
+	topic := mgr.NewTopic(dir, 0)
+	sm := mgr.NewSyncMap[string, mgr.Pan]()
+	topic.TryTransfer(sm)
 }

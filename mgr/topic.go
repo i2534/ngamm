@@ -7,6 +7,7 @@ import (
 	"regexp"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/robfig/cron/v3"
@@ -19,9 +20,19 @@ type Metadata struct {
 	MaxRetryCount int
 	retryCount    int
 	Abandon       bool // 已达到最大重试次数, 放弃更新
+	mutex         *sync.Mutex
+}
+
+func NewMetadata() *Metadata {
+	return &Metadata{
+		mutex: &sync.Mutex{},
+	}
 }
 
 func (m *Metadata) Merge(n *Metadata) {
+	m.mutex.Lock()
+	defer m.mutex.Unlock()
+
 	m.UpdateCron = n.UpdateCron
 	m.MaxRetryCount = n.MaxRetryCount
 	m.Abandon = n.Abandon
@@ -53,7 +64,7 @@ func NewTopic(root *ExtRoot, id int) *Topic {
 		root:     root,
 		timers:   NewSyncMap[time.Duration, *time.Timer](),
 		Id:       id,
-		Metadata: &Metadata{},
+		Metadata: NewMetadata(),
 	}
 }
 
@@ -158,7 +169,7 @@ func LoadTopic(root *ExtRoot, id int, nga *Client) (*Topic, error) {
 		topic.MaxFloor = sec.Key("max_floor").MustInt(-1)
 	}
 
-	md := new(Metadata)
+	md := NewMetadata()
 	jd, e := dir.ReadAll(METADATA_JSON)
 	if e != nil {
 		if os.IsNotExist(e) {
@@ -176,8 +187,12 @@ func LoadTopic(root *ExtRoot, id int, nga *Client) (*Topic, error) {
 	return topic, nil
 }
 
-func (t *Topic) Save() error {
-	data, e := json.MarshalIndent(t.Metadata, "", "  ")
+func (t *Topic) SaveMeta() error {
+	m := t.Metadata
+	m.mutex.Lock()
+	defer m.mutex.Unlock()
+
+	data, e := json.MarshalIndent(m, "", "  ")
 	if e != nil {
 		return e
 	}

@@ -42,6 +42,24 @@ services:
     restart: unless-stopped
 ```
 
+#### docker with 网盘
+为了自动保存好心人分享的资源, 现在逐步支持帖子内的网盘分享链接自动转存到网盘内
+
+部署时, 将镜像更改为 `i2534/ngamm-pan:latest` 既可, 如: 
+```shell
+docker run -it -p 5842:5842 -v ./data:/app/data -e TOKEN="" i2534/ngamm-pan:latest
+```
+
+*暂时*只支持 百度网盘, 使用 [BaiduPCS-Go](https://github.com/qjfoidnh/BaiduPCS-Go), 故需要在 `/app/data/baidupcs` 下放置 `user.ini`
+配置来实现自动登录网盘, 这两个值如何获取, 请参照 [使用百度 BDUSS 来登录百度帐号](https://github.com/qjfoidnh/BaiduPCS-Go?tab=readme-ov-file#%E4%BD%BF%E7%94%A8%E7%99%BE%E5%BA%A6-bduss-%E6%9D%A5%E7%99%BB%E5%BD%95%E7%99%BE%E5%BA%A6%E5%B8%90%E5%8F%B7) 来获取
+```ini
+bduss=
+stoken=
+```
+如果一切正常, 将会自动分析帖子前 *4* 楼内的内容, 遇到 `pan.baidu.com` 类型的链接会视为分享链接, 其后跟随的 `提取码` 后的 **4** 位字符视为 `提取码`, 另外会尝试寻找 `解压密码`, 然后转存此分享到 `/我的资源/帖子ID` 下, 如果发现解压密码, 则将密码保存到 `/我的资源/帖子ID/_uzp.txt` 中
+
+夸克网盘已有思路, 但没有开箱即用的, 可能需要开发, 敬请期待...
+
 ### 单独程序方式(不推荐)
 #### 准备 ngapost2md
 

@@ -59,10 +59,15 @@ jobs:
         name: build-artifacts-${{ matrix.os }}-${{ matrix.arch }}
         path: ./build/
 
-    - name: Build Docker image
+    - name: Build Docker image - ngamm
       if: matrix.arch == 'amd64' && matrix.os != 'windows-latest'
       run: |
         docker build -t ngamm:${{ env.VERSION }} .
+
+    - name: Build Docker image - ngamm-pan
+      if: matrix.arch == 'amd64' && matrix.os != 'windows-latest'
+      run: |
+        docker build --build-arg NET_PAN="true" -t ngamm-pan:${{ env.VERSION }} .
 
     - name: Log in to Docker Hub
       if: matrix.arch == 'amd64' && matrix.os != 'windows-latest'
@@ -71,14 +76,26 @@ jobs:
         username: ${{ secrets.DOCKER_USERNAME }}
         password: ${{ secrets.DOCKER_PASSWORD }}
 
-    - name: Push to Docker Hub with version tag
+    - name: Push ngamm to Docker Hub with version tag
       if: matrix.arch == 'amd64' && matrix.os != 'windows-latest'
       run: |
         docker tag ngamm:${{ env.VERSION }} ${{ secrets.DOCKER_USERNAME }}/ngamm:${{ env.VERSION }}
         docker push ${{ secrets.DOCKER_USERNAME }}/ngamm:${{ env.VERSION }}
 
-    - name: Push to Docker Hub with latest tag
+    - name: Push ngamm to Docker Hub with latest tag
       if: matrix.arch == 'amd64' && matrix.os != 'windows-latest'
       run: |
         docker tag ngamm:${{ env.VERSION }} ${{ secrets.DOCKER_USERNAME }}/ngamm:latest
         docker push ${{ secrets.DOCKER_USERNAME }}/ngamm:latest
+        
+    - name: Push ngamm-pan to Docker Hub with version tag
+      if: matrix.arch == 'amd64' && matrix.os != 'windows-latest'
+      run: |
+        docker tag ngamm-pan:${{ env.VERSION }} ${{ secrets.DOCKER_USERNAME }}/ngamm-pan:${{ env.VERSION }}
+        docker push ${{ secrets.DOCKER_USERNAME }}/ngamm-pan:${{ env.VERSION }}
+
+    - name: Push ngamm-pan to Docker Hub with latest tag
+      if: matrix.arch == 'amd64' && matrix.os != 'windows-latest'
+      run: |
+        docker tag ngamm-pan:${{ env.VERSION }} ${{ secrets.DOCKER_USERNAME }}/ngamm-pan:latest
+        docker push ${{ secrets.DOCKER_USERNAME }}/ngamm-pan:latest
