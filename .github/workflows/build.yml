@@ -31,7 +31,7 @@ jobs:
 
     # - name: Generate changelog text file
     #   run: |
-    #     git log --pretty=format:"- %ad (%h): %s " --date=format:'%Y-%m-%d %H:%M' > CHANGELOG.md
+    #     git log --pretty=format:"- %ad (%h): %s " --date=format-local:'%Y-%m-%d %H:%M' > CHANGELOG.md
         
     - name: Build for amd64 on Linux
       if: matrix.arch == 'amd64' && matrix.os != 'windows-latest'

@@ -251,18 +251,34 @@ function render(ngaBase, id, token, content) {
         navigator.clipboard.writeText(tid).then(() => {
             // 显示复制成功的提示
             const copyButton = menu.querySelector('.copy-button');
-            const originalText = copyButton.textContent;
             copyButton.textContent = '已复制';
 
             // 2秒后恢复按钮文本
             setTimeout(() => {
-                copyButton.textContent = originalText;
+                copyButton.textContent = '复制';
             }, 2000);
         }).catch(err => {
             console.error('复制失败:', err);
             alert('复制ID失败，请手动复制');
         });
-    }
+    };
+    window.forceReload = function () {
+        if (confirm('是否强制重新下载?')) {
+            fetch(`${baseUrl}`, {
+                method: 'DELETE',
+            }).then(r => {
+                if (r.ok) {
+                    alert('强制重新下载成功');
+                    window.close();
+                } else {
+                    alert(`强制重新下载失败: ${r.statusText}`);
+                }
+            }).catch(e => {
+                console.error('请求失败:', e);
+                alert(`强制重新下载失败: ${e}`);
+            });
+        }
+    };
 
     const observer = new IntersectionObserver((entries, observer) => {
         entries.filter(e => e.isIntersecting)

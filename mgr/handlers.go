@@ -72,6 +72,7 @@ func (srv *Server) regHandlers() {
 		}
 		vg.GET("/:token/:id", srv.viewTopic())
 		vg.GET("/:token/:id/:name", srv.viewTopicRes())
+		vg.DELETE("/:token/:id", srv.topicForceReload())
 	}
 
 	r.GET("/", srv.homePage())
@@ -224,53 +225,61 @@ func (srv *Server) topicDel() func(c *gin.Context) {
 			return
 		}
 
-		cache := srv.cache
-
-		topic, has := cache.topics.Get(id)
-		if !has {
+		if !srv.deleteTopic(id) {
 			c.JSON(http.StatusNotFound, toErr("未找到帖子"))
+		} else {
+			c.JSON(http.StatusOK, id)
+		}
+	}
+}
+
+func (srv *Server) deleteTopic(id int) bool {
+	cache := srv.cache
+
+	topic, has := cache.topics.Get(id)
+	if !has {
+
+		return false
+	}
+
+	cache.topics.Delete(id)
+
+	go func() {
+		log.Println("删除帖子", id)
+		defer topic.Close()
+
+		dir, e := topic.root.AbsPath()
+		if e != nil {
+			log.Println("获取帖子绝对路径失败:", e)
 			return
 		}
 
-		cache.topics.Delete(id)
+		root, e := cache.topicRoot.AbsPath()
+		if e != nil {
+			log.Println("获取帖子根目录绝对路径失败:", e)
+			return
+		}
+		recycles := filepath.Join(root, DIR_RECYCLE_BIN)
+		if e := os.MkdirAll(recycles, COMMON_DIR_MODE); e != nil {
+			log.Println("创建回收站失败:", recycles, e)
 
-		go func() {
-			log.Println("删除帖子", id)
-			defer topic.Close()
-
-			dir, e := topic.root.AbsPath()
-			if e != nil {
-				log.Println("获取帖子绝对路径失败:", e)
-				return
+			log.Println("尝试直接删除帖子:", dir)
+			if e := os.RemoveAll(dir); e != nil {
+				log.Println("直接删除帖子失败:", dir, e)
 			}
-
-			root, e := cache.topicRoot.AbsPath()
-			if e != nil {
-				log.Println("获取帖子根目录绝对路径失败:", e)
-				return
-			}
-			recycles := filepath.Join(root, DIR_RECYCLE_BIN)
-			if e := os.MkdirAll(recycles, COMMON_DIR_MODE); e != nil {
-				log.Println("创建回收站失败:", recycles, e)
-
-				log.Println("尝试直接删除帖子:", dir)
-				if e := os.RemoveAll(dir); e != nil {
-					log.Println("直接删除帖子失败:", dir, e)
-				}
+		} else {
+			log.Println("移动帖子到回收站:", dir)
+			tar := filepath.Join(recycles, strconv.Itoa(id))
+			os.RemoveAll(tar) // remove old
+			if e := os.Rename(dir, tar); e != nil {
+				log.Println("移动帖子到回收站失败:", dir, e)
 			} else {
-				log.Println("移动帖子到回收站:", dir)
-				tar := filepath.Join(recycles, strconv.Itoa(id))
-				os.RemoveAll(tar) // remove old
-				if e := os.Rename(dir, tar); e != nil {
-					log.Println("移动帖子到回收站失败:", dir, e)
-				} else {
-					os.WriteFile(filepath.Join(tar, DELETE_FLAG), []byte(time.Now().Format(time.RFC3339)), COMMON_FILE_MODE)
-				}
+				os.WriteFile(filepath.Join(tar, DELETE_FLAG), []byte(time.Now().Format(time.RFC3339)), COMMON_FILE_MODE)
 			}
-		}()
+		}
+	}()
 
-		c.JSON(http.StatusOK, id)
-	}
+	return true
 }
 
 func (srv *Server) topicUpdate() func(c *gin.Context) {
@@ -676,6 +685,28 @@ func (srv *Server) unsubscribe() func(c *gin.Context) {
 		} else {
 			c.JSON(http.StatusInternalServerError, toErr(e.Error()))
 		}
+	}
+}
+
+func (srv *Server) topicForceReload() func(c *gin.Context) {
+	return func(c *gin.Context) {
+		id, e := strconv.Atoi(c.Param("id"))
+		if e != nil {
+			c.JSON(http.StatusBadRequest, toErr("无效的帖子 ID"))
+			return
+		}
+
+		if !srv.deleteTopic(id) {
+			c.JSON(http.StatusInternalServerError, toErr("删除帖子失败"))
+			return
+		}
+
+		if e := srv.addTopic(id); e != nil {
+			c.JSON(http.StatusInternalServerError, toErr(e.Error()))
+			return
+		}
+
+		c.JSON(http.StatusOK, id)
 	}
 }
 

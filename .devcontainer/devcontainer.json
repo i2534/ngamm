@@ -8,6 +8,9 @@
       "dockerDashComposeVersion": "v2"
     }
   },
+  "containerEnv": {
+    "TZ": "Asia/Shanghai"
+  },
   "customizations": {
     "vscode": {
       "extensions": [
@@ -31,7 +34,7 @@
       }
     }
   },
-  "postCreateCommand": "curl -sSL https://raw.githubusercontent.com/voidint/g/master/install.sh | bash && . ~/.g/env && g install latest",
+  "postCreateCommand": "apt-get update && apt-get install -y tzdata && ln -fs /usr/share/zoneinfo/Asia/Shanghai /etc/localtime && dpkg-reconfigure -f noninteractive tzdata && curl -sSL https://raw.githubusercontent.com/voidint/g/master/install.sh | bash && . ~/.g/env && g install latest",
   "postStartCommand": ". ~/.g/env",
   "remoteUser": "root"
 }
