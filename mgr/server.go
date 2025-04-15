@@ -386,6 +386,7 @@ func (srv *Server) SetNetPan(pan Pan) {
 		cache.pans = NewSyncMap[string, Pan]()
 	}
 	if pan != nil {
+		log.Println("添加网盘", pan.Name())
 		cache.pans.Put(pan.Name(), pan)
 	}
 }

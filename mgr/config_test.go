@@ -27,7 +27,4 @@ func TestLoadConfig(t *testing.T) {
 	if cfg.Smile != "local" {
 		t.Fatalf("表情配置错误, 期望: local, 实际: %s", cfg.Smile)
 	}
-	println(cfg.Baidu.ReleaseURL)
-	cfg.Baidu.ReleaseURL = "xxx"
-	println(cfg.Baidu.ReleaseURL)
 }

@@ -9,6 +9,7 @@
 *.dylib
 ngamm
 compose.yml
+CHANGELOG.md
 
 # Test binary, built with `go test -c`
 *.test

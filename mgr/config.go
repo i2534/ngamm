@@ -6,11 +6,15 @@ import (
 	"gopkg.in/ini.v1"
 )
 
-type BaiduPCS struct {
-	Root       string
-	Bduss      string
-	Stoken     string
-	ReleaseURL string `ini:"release"`
+type BaiduCfg struct {
+	Root   string
+	Bduss  string
+	Stoken string
+}
+
+type QuarkCfg struct {
+	Root   string
+	Cookie string
 }
 
 type Config struct {
@@ -18,7 +22,7 @@ type Config struct {
 	Program string
 	Smile   string
 	Token   string
-	Baidu   BaiduPCS `ini:"baidupcs"`
+	Pan     string
 }
 
 func LoadConfig(path string) (*Config, error) {

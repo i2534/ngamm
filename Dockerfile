@@ -45,7 +45,7 @@ RUN apk add --no-cache tzdata \
 WORKDIR /app
 # 从构建阶段复制二进制文件和脚本文件
 COPY --from=builder /app/main ./ngamm
-# COPY --from=builder /app/entrypoint.sh .
+COPY --from=builder /app/assets/pan-config.ini ./pan-config.ini
 COPY entrypoint.sh .
 # 设置环境变量
 # ENV TOKEN=""

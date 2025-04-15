@@ -8,7 +8,7 @@ import (
 )
 
 func TestBaiduInit(t *testing.T) {
-	baidu := mgr.NewBaidu(mgr.BaiduPCS{
+	baidu := mgr.NewBaidu(mgr.BaiduCfg{
 		Root: "/workspaces/ngamm/ngapost2md/BaiduPCS-Go",
 	})
 	defer baidu.Close()
@@ -19,7 +19,7 @@ func TestBaiduInit(t *testing.T) {
 }
 
 func TestBaiduTransfer(t *testing.T) {
-	baidu := mgr.NewBaidu(mgr.BaiduPCS{
+	baidu := mgr.NewBaidu(mgr.BaiduCfg{
 		Root: "/workspaces/ngamm/ngapost2md/BaiduPCS-Go",
 	})
 	defer baidu.Close()
@@ -28,8 +28,8 @@ func TestBaiduTransfer(t *testing.T) {
 
 	// baidu.Upload("/workspaces/ngamm/LICENSE", "/我的资源/43800012")
 
-	if err := baidu.Transfer(43800012, mgr.PanMetadata{
-		URL: "https://pan.baidu.com/s/1vjTokERSIfnooYrDpE9OAg?pwd=ad67",
+	if err := baidu.Transfer(43808300, mgr.PanMetadata{
+		URL: "https://pan.baidu.com/s/1i0Voz5PwgB-TX9xm5-5-Ng?pwd=534h?",
 	}); err != nil {
 		t.Fatalf("Failed to transfer files: %v", err)
 	}

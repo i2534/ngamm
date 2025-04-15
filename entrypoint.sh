@@ -16,6 +16,7 @@ setup_directories() {
     dir_data=$dir_work/data
     dir_np2md=$dir_work/np2md
     dir_baidupcs=$dir_work/baidupcs
+    dir_pan=$dir_data/pan
 }
 
 # 获取ngapost2md二进制文件
@@ -83,10 +84,17 @@ start_application() {
     fi
     CMD="$CMD -p 5842 -m $dir_data/ngapost2md"
     if [ "$NET_PAN" = "true" ]; then
-        local ddbp="$dir_data/baidupcs"
-        mkdir -p "$ddbp"
-        cp -rn "$dir_baidupcs/"* "$ddbp/"
-        CMD="$CMD -b $ddbp"
+        mkdir -p "$dir_pan"
+        cp -rn "./pan-config.ini" "$dir_pan/config.ini"
+
+        local dpb="$dir_pan/baidu"
+        mkdir -p "$dpb"
+        cp -rn "$dir_baidupcs/"* "$dpb/"
+
+        local dpq="$dir_pan/quark"
+        mkdir -p "$dpq"
+
+        CMD="$CMD -n $dir_pan"
     fi
     eval "$CMD"
 }
