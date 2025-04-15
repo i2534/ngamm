@@ -29,6 +29,10 @@ blockquote {
     display: none;
 }
 
+.hide-media {
+    display: none !important;
+}
+
 .comment {
     background: #ffedc3;
     padding: 0.5em;

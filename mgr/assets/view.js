@@ -4,6 +4,9 @@ function render(ngaBase, id, token, content) {
     const ngaPostBase = `${ngaBase}/read.php?tid=`;
     marked.use(markedBaseUrl.baseUrl(baseUrl));
 
+    const urlParams = new URLSearchParams(window.location.search);
+    const vwm = urlParams.get('vwm') == "true"; // view without media
+
     const attrSrc = '_src', attrPoster = '_poster';
 
     const renderer = {
@@ -279,6 +282,25 @@ function render(ngaBase, id, token, content) {
             });
         }
     };
+    window.toggleViewMedia = function () {
+        const e = document.querySelector('#toggleViewMedia');
+        const vwm = e.getAttribute('vwm') === 'true';
+        if (vwm) {
+            e.setAttribute('vwm', 'false');
+            e.textContent = '隐藏显示图片';
+            document.querySelectorAll('img, video')
+                .forEach(e => {
+                    e.classList.remove('hide-media');
+                });
+        } else {
+            e.setAttribute('vwm', 'true');
+            e.textContent = '显示隐藏图片';
+            document.querySelectorAll('img, video')
+                .forEach(e => {
+                    e.classList.add('hide-media');
+                });
+        }
+    }
 
     const observer = new IntersectionObserver((entries, observer) => {
         entries.filter(e => e.isIntersecting)
@@ -342,6 +364,12 @@ function render(ngaBase, id, token, content) {
     }
 
     window.addEventListener('load', () => {
+        if (vwm) {
+            const btn = document.querySelector('#toggleViewMedia');
+            btn.textContent = '显示隐藏图片';
+            btn.setAttribute('vwm', 'true');
+        }
+
         const c = document.querySelector('#content');
         if (c) {
             const loading = URL.createObjectURL(new Blob([document.querySelector('#loading').innerHTML], { type: 'image/svg+xml' }));
@@ -358,6 +386,9 @@ function render(ngaBase, id, token, content) {
             // 监视所有 img 和 video 元素的可见性
             c.querySelectorAll('img, video')
                 .forEach(e => {
+                    if (vwm) {
+                        e.classList.add('hide-media');
+                    }
                     if (e.tagName.toLowerCase() === 'img') {
                         e.src = loading;
                         e.addEventListener('load', function () { // 图片加载完毕后更新宽度

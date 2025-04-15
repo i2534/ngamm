@@ -11,11 +11,11 @@
 - [x] 预览帖子内容
 - [x] 订阅帖子作者的新帖子, 可以附加过滤条件
 - [x] 自动保存帖子中的分享资源, 现在支持 **百度网盘** 和 **夸克网盘**
+- [x] 网盘各种失败信息发送到 `webhook`
+- [x] 帖子无图模式预览 (防止在不合适的场合蹦出来大兔子)
 ### 未来实现
-- [ ] 帖子无图模式预览 (防止在不合适的场合蹦出来大兔子)
 - [ ] 在管理页面显示帖子是否包含网盘资源
 - [ ] 夸克网盘支持添加解压密码
-- [ ] 网盘各种失败信息发送 `webhook`
 
 ## 部署方式
 ### docker 方式(推荐)
@@ -64,9 +64,9 @@ services:
 docker run -it -p 5842:5842 -v ./data:/app/data -e TOKEN="" i2534/ngamm-pan:latest
 ```
 
-只支持 百度网盘 和 夸克网盘, 需要在 `/app/data/pan` 下配置 `config.ini`
+只支持 百度网盘 和 夸克网盘, 需要在 `/app/data/pan` 下配置 [`config.ini`](./assets/pan-config.ini)
 
-第一次启动会自动生成 `config.ini`
+第一次启动会自动生成 `config.ini`, 配置 `webhook` 后, 转存失败后会自动发送消息
 
 百度网盘 使用 [BaiduPCS-Go](https://github.com/qjfoidnh/BaiduPCS-Go) 实现
 

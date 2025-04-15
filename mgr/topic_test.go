@@ -72,6 +72,5 @@ func TestTryTransfer(t *testing.T) {
 		return
 	}
 	topic := mgr.NewTopic(dir, 0)
-	sm := mgr.NewSyncMap[string, mgr.Pan]()
-	topic.TryTransfer(sm)
+	topic.TryTransfer(nil)
 }

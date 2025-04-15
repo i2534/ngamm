@@ -47,7 +47,7 @@ type cache struct {
 	topics    *SyncMap[int, *Topic] // all topics
 	queue     chan int              // adding or update topic id
 	smile     *Smile
-	pans      *SyncMap[string, Pan]
+	pans      *PanHolder
 }
 
 func (c *cache) Close() error {
@@ -56,9 +56,7 @@ func (c *cache) Close() error {
 	})
 	close(c.queue)
 	if c.pans != nil {
-		c.pans.EAC(func(_ string, pan Pan) {
-			pan.Close()
-		})
+		c.pans.Close()
 	}
 	return c.topicRoot.Close()
 }
@@ -378,17 +376,11 @@ func (srv *Server) getTopics(username string) []*Topic {
 	return ret
 }
 
-func (srv *Server) SetNetPan(pan Pan) {
+func (srv *Server) SetNetPan(pan *PanHolder) {
 	cache := srv.cache
 	cache.lock.Lock()
 	defer cache.lock.Unlock()
-	if cache.pans == nil {
-		cache.pans = NewSyncMap[string, Pan]()
-	}
-	if pan != nil {
-		log.Println("添加网盘", pan.Name())
-		cache.pans.Put(pan.Name(), pan)
-	}
+	cache.pans = pan
 }
 
 // 启动服务器并阻塞

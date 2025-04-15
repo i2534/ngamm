@@ -2,9 +2,11 @@ package mgr
 
 import (
 	"encoding/json"
+	"fmt"
 	"html"
 	"io"
 	"log"
+	"net/http"
 	"path/filepath"
 	"regexp"
 	"strings"
@@ -29,6 +31,7 @@ type Pan interface {
 	Support(md PanMetadata) bool
 	// 保存分享到网盘, 实现自行处理队列
 	Transfer(topicId int, md PanMetadata) error
+	SetHolder(holder *PanHolder)
 }
 
 type PanMetadata struct {
@@ -38,61 +41,173 @@ type PanMetadata struct {
 	Saved bool   // 是否已保存
 }
 
-func InitPan(root string) ([]Pan, error) {
+type webhook struct {
+	Enable bool   `ini:"enable"` // 是否启用
+	Name   string `ini:"name"`   // 名称
+	URL    string `ini:"url"`    // 网钩地址
+	Method string `ini:"method"` // 请求方法
+	Header string `ini:"header"` // 请求头
+	Body   string `ini:"body"`   // 请求体
+}
+
+func (w webhook) send(msg string) error {
+	data := strings.ReplaceAll(w.Body, "{{message}}", msg)
+	req, e := http.NewRequest(w.Method, w.URL, strings.NewReader(data))
+	if e != nil {
+		return e
+	}
+	if w.Header != "" {
+		for _, h := range strings.Split(w.Header, ";") {
+			kv := strings.SplitN(h, ":", 2)
+			if len(kv) != 2 {
+				continue
+			}
+			k := strings.TrimSpace(kv[0])
+			v := strings.TrimSpace(kv[1])
+			req.Header.Set(k, v)
+		}
+	}
+	resp, e := DoHttp(req)
+	if e != nil {
+		return e
+	}
+	defer resp.Body.Close()
+
+	body, _ := io.ReadAll(resp.Body)
+	if resp.StatusCode != http.StatusOK {
+		return fmt.Errorf("webhook %s 返回错误: %d, %s", w.Name, resp.StatusCode, string(body))
+	}
+	log.Println("webhook:", w.Name, "返回:", string(body))
+	return nil
+}
+
+type PanHolder struct {
+	Root  string      // 网盘根目录
+	Pans  []Pan       // 网盘列表
+	hooks []webhook   // 网盘钩子
+	msgCh chan string // 网盘消息
+}
+
+func (p *PanHolder) Close() error {
+	for _, pan := range p.Pans {
+		pan.Close()
+	}
+	close(p.msgCh)
+	return nil
+}
+
+func NewPanHolder(root string) (*PanHolder, error) {
 	fp := filepath.Join(root, PAN_CONFIG)
 	cfg, e := ini.Load(fp)
 	if e != nil {
 		log.Printf("加载网盘配置文件 %s 失败: %s\n", fp, e.Error())
 		return nil, e
 	}
+	cfg.BlockMode = false
 
-	ps := make([]Pan, 0)
+	ph := &PanHolder{
+		Root:  root,
+		Pans:  make([]Pan, 0),
+		hooks: make([]webhook, 0),
+		msgCh: make(chan string, 99),
+	}
 
-	cbs := cfg.Section("baidu")
-	if cbs != nil {
-		if b, _ := cbs.Key("enable").Bool(); b {
-			bc := BaiduCfg{
-				Root:   filepath.Join(root, "baidu"),
-				Bduss:  cbs.Key("bduss").String(),
-				Stoken: cbs.Key("stoken").String(),
+	ph.initHook(cfg)
+	ph.initBaidu(cfg.Section("baidu"))
+	ph.initQuark(cfg.Section("quark"))
+
+	go func() {
+		for msg := range ph.msgCh {
+			log.Println("准备发送网盘消息:", msg)
+			for _, hook := range ph.hooks {
+				if e := hook.send(msg); e != nil {
+					log.Printf("发送网盘消息到 %s 失败: %s\n", hook.Name, e.Error())
+				}
 			}
-			baidu := NewBaidu(bc)
-			if e := baidu.Init(); e != nil {
-				log.Println("初始化失败:", e.Error())
-			} else {
-				log.Println("BaiduPan 初始化完成")
-				ps = append(ps, baidu)
-			}
-		} else {
-			log.Println("BaiduPan 未启用")
 		}
-	}
-	cqs := cfg.Section("quark")
-	if cqs != nil {
-		if b, _ := cqs.Key("enable").Bool(); b {
-			qc := QuarkCfg{
-				Root:   filepath.Join(root, "quark"),
-				Cookie: cqs.Key("cookie").String(),
-			}
-			quark := NewQuarkPan(qc)
-			if e := quark.Init(); e != nil {
-				log.Println("初始化失败:", e.Error())
-			} else {
-				log.Println("QuarkPan 初始化完成")
-				ps = append(ps, quark)
-			}
-		} else {
-			log.Println("QuarkPan 未启用")
-		}
-	}
-	return ps, nil
+	}()
+
+	return ph, nil
 }
 
-func (t *Topic) TryTransfer(pans *SyncMap[string, Pan]) {
-	if pans == nil || pans.Size() == 0 {
+func (p *PanHolder) Send(msg string) {
+	if p.msgCh != nil {
+		p.msgCh <- msg
+	}
+}
+
+func (p *PanHolder) initBaidu(cfg *ini.Section) {
+	if cfg == nil {
 		return
 	}
+	if b, _ := cfg.Key("enable").Bool(); b {
+		bc := BaiduCfg{
+			Root:   filepath.Join(p.Root, "baidu"),
+			Bduss:  cfg.Key("bduss").String(),
+			Stoken: cfg.Key("stoken").String(),
+		}
+		baidu := NewBaidu(bc)
+		if e := baidu.Init(); e != nil {
+			log.Println("初始化失败:", e.Error())
+			p.Send(e.Error())
+		} else {
+			log.Println("BaiduPan 初始化完成")
+			baidu.SetHolder(p)
+			p.Pans = append(p.Pans, baidu)
+		}
+	} else {
+		log.Println("BaiduPan 未启用")
+	}
+}
+func (p *PanHolder) initQuark(cfg *ini.Section) {
+	if cfg == nil {
+		return
+	}
+	if b, _ := cfg.Key("enable").Bool(); b {
+		qc := QuarkCfg{
+			Root:   filepath.Join(p.Root, "quark"),
+			Cookie: cfg.Key("cookie").String(),
+		}
+		quark := NewQuarkPan(qc)
+		if e := quark.Init(); e != nil {
+			log.Println("初始化失败:", e.Error())
+			p.Send(e.Error())
+		} else {
+			log.Println("QuarkPan 初始化完成")
+			quark.SetHolder(p)
+			p.Pans = append(p.Pans, quark)
+		}
+	} else {
+		log.Println("QuarkPan 未启用")
+	}
+}
+func (p *PanHolder) initHook(cfg *ini.File) {
+	if cfg == nil {
+		return
+	}
+	for _, sec := range cfg.Sections() {
+		name := sec.Name()
+		if strings.Contains(name, "webhook.") {
+			log.Println("初始化 webhook:", name)
+			hook := new(webhook)
+			if e := sec.MapTo(hook); e != nil {
+				log.Println("初始化失败:", e.Error())
+				continue
+			}
+			if hook.Enable {
+				log.Println("启用 webhook:", hook.Name)
+				p.hooks = append(p.hooks, *hook)
+			} else {
+				log.Println("未启用 webhook:", hook.Name)
+			}
+		}
+	}
+}
 
+func (t *Topic) TryTransfer(ph *PanHolder) {
+	if ph == nil {
+		return
+	}
 	t.Metadata.mutex.Lock()
 	defer t.Metadata.mutex.Unlock()
 
@@ -106,7 +221,7 @@ func (t *Topic) TryTransfer(pans *SyncMap[string, Pan]) {
 		return
 	}
 	for _, pm := range pms {
-		for _, pan := range pans.Values() {
+		for _, pan := range ph.Pans {
 			if !pan.Support(*pm) {
 				continue
 			}
@@ -121,11 +236,8 @@ func (t *Topic) TryTransfer(pans *SyncMap[string, Pan]) {
 	data, e := json.MarshalIndent(pms, "", "  ")
 	if e != nil {
 		log.Printf("持久化网盘 JSON 失败: %s\n", e.Error())
-		return
-	}
-	if e := t.root.WriteAll(PAN_JSON, data); e != nil {
+	} else if e := t.root.WriteAll(PAN_JSON, data); e != nil {
 		log.Printf("保存网盘 JSON 失败: %s\n", e.Error())
-		return
 	}
 }
 

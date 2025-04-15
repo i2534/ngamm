@@ -114,12 +114,10 @@ func main() {
 
 	if global.Pan != "" {
 		go func() {
-			if ps, e := mgr.InitPan(global.Pan); e != nil {
+			if ph, e := mgr.NewPanHolder(global.Pan); e != nil {
 				log.Println("初始化网盘出现问题:", e.Error())
 			} else {
-				for _, p := range ps {
-					srv.SetNetPan(p)
-				}
+				srv.SetNetPan(ph)
 			}
 		}()
 	}

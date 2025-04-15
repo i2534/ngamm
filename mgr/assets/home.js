@@ -476,7 +476,7 @@ function init(hasToken, ngaPostBase) {
 
     async function viewTopic(id, maxFloor) {
         const token = headers.Authorization ? await hashToken(headers.Authorization) : '-';
-        window.open(`${origin}/view/${token}/${id}?max=${maxFloor}`, '_blank');
+        window.open(`${origin}/view/${token}/${id}?max=${maxFloor}&vwm=${document.getElementById('viewWithoutMedia').checked}`, '_blank');
     }
 
     function closeDialog(dialogId) {
@@ -548,14 +548,33 @@ function init(hasToken, ngaPostBase) {
         }
     };
 
+
+    window.viewWithoutMedia = function () {
+        localStorage.setItem('withoutMedia', 'true');
+    };
+
     window.addEventListener('load', () => {
         loadAuthToken();
         listTopics();
+
         document.getElementById('searchInput').addEventListener('input', (e) => searchTopics(e.target.value));
         document.getElementById('clearSearchInput').addEventListener('click', () => {
             clearInput('searchInput');
             searchTopics('');
         });
+
+        const vwm = document.getElementById('viewWithoutMedia');
+        vwm.addEventListener('change', (e) => {
+            if (e.target.checked) {
+                localStorage.setItem('withoutMedia', 'true');
+            } else {
+                localStorage.removeItem('withoutMedia');
+            }
+        });
+        if (localStorage.getItem('withoutMedia') === 'true') {
+            vwm.checked = true;
+        }
+
         setInterval(listTopics, 60000);
     });
 }

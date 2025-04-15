@@ -39,6 +39,7 @@ type Baidu struct {
 	mutex   *sync.Mutex
 	tasks   chan baiduTask
 	cron    *cron.Cron
+	holder  *PanHolder
 }
 
 func NewBaidu(cfg BaiduCfg) *Baidu {
@@ -55,6 +56,10 @@ func (b Baidu) Name() string {
 
 func (b Baidu) Support(pmd PanMetadata) bool {
 	return strings.Contains(pmd.URL, "pan.baidu.com")
+}
+
+func (b *Baidu) SetHolder(holder *PanHolder) {
+	b.holder = holder
 }
 
 func (b *Baidu) initPath() error {
@@ -119,6 +124,7 @@ func (b *Baidu) Init() error {
 				for task := range b.tasks {
 					if e := b.doTransfer(task); e != nil {
 						log.Println(e.Error())
+						b.holder.Send(e.Error())
 					}
 				}
 			}()

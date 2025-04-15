@@ -23,11 +23,12 @@ type quarkTask struct {
 	unzipPwd string
 }
 type QuarkPan struct {
-	cfg   QuarkCfg
-	root  string
-	quark *Quark
-	mutex *sync.Mutex
-	tasks chan quarkTask
+	cfg    QuarkCfg
+	root   string
+	quark  *Quark
+	mutex  *sync.Mutex
+	tasks  chan quarkTask
+	holder *PanHolder
 }
 
 func NewQuarkPan(cfg QuarkCfg) *QuarkPan {
@@ -40,6 +41,11 @@ func NewQuarkPan(cfg QuarkCfg) *QuarkPan {
 func (q *QuarkPan) Name() string {
 	return "quark"
 }
+
+func (q *QuarkPan) SetHolder(holder *PanHolder) {
+	q.holder = holder
+}
+
 func (q *QuarkPan) Init() error {
 	q.mutex.Lock()
 	defer q.mutex.Unlock()
@@ -87,6 +93,7 @@ func (q *QuarkPan) Init() error {
 				log.Println("QuarkPan: 启动任务处理协程")
 				if e := q.doTransfer(task); e != nil {
 					log.Println(e.Error())
+					q.holder.Send(e.Error())
 				}
 			}
 		}()
