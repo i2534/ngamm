@@ -14,6 +14,9 @@ main() {
         go)
             go run . -m data/ngapost2md -n data/pan
             ;;
+        log)
+            git log --pretty=format:"- %ad (%h): %s " --date=format-local:'%Y-%m-%d %H:%M' > CHANGELOG.md
+            ;;
         *)
             echo "未知命令: $cmd"
             exit 1
