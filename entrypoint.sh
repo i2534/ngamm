@@ -72,7 +72,10 @@ start_application() {
     echo "正在启动应用..."
 
     mkdir -p "$dir_data"
-    cp -rn "$dir_np2md/"* "$dir_data/"
+    # 强制覆盖
+    cp "$dir_np2md/ngapost2md" "$dir_data/"
+    # 复制配置文件, 用户可能会在外部修改配置文件
+    cp -n "$dir_np2md/config.ini" "$dir_data/"
 
     cd "$dir_work"
     chmod +x ngamm
@@ -85,10 +88,12 @@ start_application() {
     CMD="$CMD -p 5842 -m $dir_data/ngapost2md"
     if [ "$NET_PAN" = "true" ]; then
         mkdir -p "$dir_pan"
-        cp -rn "./pan-config.ini" "$dir_pan/config.ini"
+        # 用户可能会在外部修改配置文件
+        cp -n "./pan-config.ini" "$dir_pan/config.ini"
 
         local dpb="$dir_pan/baidu"
         mkdir -p "$dpb"
+        # baidupcs 会自动更新
         cp -rn "$dir_baidupcs/"* "$dpb/"
 
         local dpq="$dir_pan/quark"
