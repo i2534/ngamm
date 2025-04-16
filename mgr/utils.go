@@ -369,3 +369,37 @@ func JoinPath(base, name string) string {
 	}
 	return filepath.Join(base, name)
 }
+
+func CopyFile(src, dst string) error {
+	sourceFileStat, e := os.Stat(src)
+	if e != nil {
+		return e
+	}
+	if !sourceFileStat.Mode().IsRegular() {
+		return fmt.Errorf("%s is not a regular file", src)
+	}
+
+	source, e := os.Open(src)
+	if e != nil {
+		return e
+	}
+	defer source.Close()
+
+	destination, e := os.Create(dst)
+	if e != nil {
+		return e
+	}
+	defer destination.Close()
+
+	_, e = io.Copy(destination, source)
+	if e != nil {
+		return e
+	}
+
+	err := destination.Sync()
+	if err != nil {
+		return err
+	}
+
+	return nil
+}

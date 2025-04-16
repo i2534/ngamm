@@ -52,7 +52,7 @@ func TestIsUID(t *testing.T) {
 }
 
 func TestGetPanMetadata(t *testing.T) {
-	dir, e := mgr.OpenRoot("/workspaces/ngamm/ngapost2md/43809596")
+	dir, e := mgr.OpenRoot("../data/43832556")
 	if e != nil {
 		t.Error("Open root failed:", e)
 		return
@@ -61,16 +61,16 @@ func TestGetPanMetadata(t *testing.T) {
 	if m, e := topic.GetPanMetadata(); e != nil {
 		t.Error("Get pan metadata failed:", e)
 	} else {
-		t.Log("Get pan metadata:", m)
+		t.Logf("Get pan metadata: %+v", m)
 	}
 }
 
 func TestTryTransfer(t *testing.T) {
-	dir, e := mgr.OpenRoot("/workspaces/ngamm/ngapost2md/43809567")
+	dir, e := mgr.OpenRoot("../data/43809567")
 	if e != nil {
 		t.Error("Open root failed:", e)
 		return
 	}
 	topic := mgr.NewTopic(dir, 0)
-	topic.TryTransfer(nil)
+	topic.AutoTransfer(nil)
 }

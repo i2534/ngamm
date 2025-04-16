@@ -32,6 +32,15 @@ type baiduTask struct {
 	unzipPwd string
 }
 
+type BaiduCfg struct {
+	Root      string // 工作目录
+	Enable    bool   `ini:"enable"`    // 是否启用
+	Transfer  string `ini:"transfer"`  // 转存方式: auto, manual
+	Directory string `ini:"directory"` // 转存的根目录
+	Bduss     string `ini:"bduss"`     // 百度网盘 bduss
+	Stoken    string `ini:"stoken"`    // 百度网盘 stoken
+}
+
 type Baidu struct {
 	cfg     BaiduCfg
 	root    string
@@ -43,19 +52,23 @@ type Baidu struct {
 }
 
 func NewBaidu(cfg BaiduCfg) *Baidu {
-	return &Baidu{
+	b := &Baidu{
 		cfg:   cfg,
 		mutex: &sync.Mutex{},
 		cron:  cron.New(cron.WithLocation(TIME_LOC)),
 	}
+	if b.cfg.Directory == "" {
+		b.cfg.Directory = BdpcsBaseDir
+	}
+	return b
 }
 
 func (b Baidu) Name() string {
 	return "baidu"
 }
 
-func (b Baidu) Support(pmd PanMetadata) bool {
-	return strings.Contains(pmd.URL, "pan.baidu.com")
+func (b Baidu) Support(pmd PanMetadata, transferType string) bool {
+	return b.cfg.Transfer == transferType && strings.Contains(pmd.URL, "pan.baidu.com")
 }
 
 func (b *Baidu) SetHolder(holder *PanHolder) {
@@ -142,20 +155,26 @@ func (b *Baidu) Init() error {
 	return b.login()
 }
 
-// https://github.com/qjfoidnh/BaiduPCS-Go/blob/main/internal/pcscommand/transfer.go#RunShareTransfer
-func (b *Baidu) doTransfer(task baiduTask) error {
-	log.Printf("BaiduPan: 处理转存任务: %d, %s\n", task.topicId, task.url)
-	dir := fmt.Sprintf("%s/%d", BdpcsBaseDir, task.topicId)
-
-	// https://github.com/qjfoidnh/BaiduPCS-Go/blob/main/internal/pcscommand/rm_mkdir.go#RunMkdir
-	if v, e := b.execute("mkdir", dir); e != nil {
-		return fmt.Errorf("BaiduPan: mkdir %s 出现问题: %s", dir, e.Error())
+func (b *Baidu) isExist(file string) bool {
+	// https://github.com/qjfoidnh/BaiduPCS-Go/blob/main/internal/pcscommand/meta.go#RunGetMeta
+	if v, e := b.execute("meta", file); e != nil {
+		log.Printf("BaiduPan: cd %s 出现问题: %s", file, e.Error())
+		return false
 	} else {
-		// if strings.Contains(v, "成功") {
-		log.Printf("BaiduPan: mkdir %s\n", v)
+		return strings.Contains(v, "app_id") && strings.Contains(v, "fs_id")
+	}
+}
+
+func (b *Baidu) safeCd(dir string) error {
+	if !b.isExist(dir) {
+		// https://github.com/qjfoidnh/BaiduPCS-Go/blob/main/internal/pcscommand/rm_mkdir.go#RunMkdir
+		if v, e := b.execute("mkdir", dir); e != nil {
+			return fmt.Errorf("BaiduPan: mkdir %s 出现问题: %s", dir, e.Error())
+		} else {
+			log.Printf("BaiduPan: mkdir %s\n", v)
+		}
 	}
 
-	// https://github.com/qjfoidnh/BaiduPCS-Go/blob/main/internal/pcscommand/cd.go#RunChangeDirectory
 	if v, e := b.execute("cd", dir); e != nil {
 		return fmt.Errorf("BaiduPan: cd %s 出现问题: %s", dir, e.Error())
 	} else {
@@ -171,6 +190,84 @@ func (b *Baidu) doTransfer(task baiduTask) error {
 		}
 	}
 
+	return nil
+}
+
+// https://github.com/qjfoidnh/BaiduPCS-Go/blob/main/internal/pcscommand/ls_search.go#RunLs
+func (b *Baidu) Ls(dir string) ([]string, error) {
+	if v, e := b.execute("ls", dir); e != nil {
+		return nil, fmt.Errorf("BaiduPan: ls %s 出现问题: %s", dir, e.Error())
+	} else {
+		text := strings.TrimSpace(v)
+		if !strings.HasPrefix(text, "当前目录:") {
+			return nil, fmt.Errorf("BaiduPan: ls %s 返回错误: %s", dir, text)
+		}
+
+		names := make([]string, 0)
+
+		lines := strings.Split(text, "\n")
+		if len(lines) > 1 {
+			start := false
+			re := regexp.MustCompile(`\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}\s+(.+?)\s*$`)
+			for _, line := range lines {
+				line = strings.TrimSpace(line)
+				if len(line) == 0 {
+					continue
+				}
+				if strings.HasPrefix(line, "----") {
+					start = !start
+					continue
+				}
+				if !start {
+					continue
+				}
+				if strings.HasPrefix(line, "#") {
+					// table header
+					continue
+				}
+				if line[0] >= '0' && line[0] <= '9' {
+					m := re.FindStringSubmatch(line)
+					if len(m) > 1 {
+						name := m[1]
+						if name != "" {
+							names = append(names, name)
+						}
+					}
+				}
+			}
+		}
+		return names, nil
+	}
+}
+
+func (b *Baidu) safeDelete(dir string) error {
+	fs, e := b.Ls(dir)
+	if e != nil {
+		return e
+	}
+	if len(fs) > 0 {
+		return fmt.Errorf("BaiduPan: 目录 %s 不为空, 请先清空", dir)
+	}
+
+	// https://github.com/qjfoidnh/BaiduPCS-Go/blob/main/internal/pcscommand/rm_mkdir.go#RunRemove
+	if v, e := b.execute("rm", dir); e != nil {
+		return fmt.Errorf("BaiduPan: rm %s 出现问题: %s", dir, e.Error())
+	} else {
+		log.Printf("BaiduPan: rm %s , %s\n", dir, v)
+	}
+	return nil
+}
+
+// https://github.com/qjfoidnh/BaiduPCS-Go/blob/main/internal/pcscommand/transfer.go#RunShareTransfer
+func (b *Baidu) doTransfer(task baiduTask) error {
+	log.Printf("BaiduPan: 处理转存任务: %d, %s\n", task.topicId, task.url)
+	dir := fmt.Sprintf("%s/%d", b.cfg.Directory, task.topicId)
+
+	if e := b.safeCd(dir); e != nil {
+		b.safeDelete(dir)
+		return e
+	}
+
 	url := task.url
 	if v, e := b.execute("transfer", url); e != nil {
 		return fmt.Errorf("BaiduPan: transfer %s 出现问题: %s", url, e.Error())
@@ -179,18 +276,21 @@ func (b *Baidu) doTransfer(task baiduTask) error {
 			log.Printf("BaiduPan: transfer %s 成功, %s\n", url, v)
 		} else {
 			log.Printf("BaiduPan: transfer %s 失败, %s\n", url, v)
+			b.safeDelete(dir)
 		}
 	}
 
 	pwd := task.unzipPwd
 	if pwd != "" {
-		f := filepath.Join(os.TempDir(), "_uzp.txt")
-		defer os.Remove(f)
+		if !b.isExist(PAN_PWD_FILE) {
+			f := filepath.Join(os.TempDir(), PAN_PWD_FILE)
+			defer os.Remove(f)
 
-		if e := os.WriteFile(f, []byte(pwd), COMMON_FILE_MODE); e != nil {
-			log.Printf("BaiduPan: 写入解压密码文件 %s 出现问题: %s", f, e.Error())
-		} else {
-			b.upload(f, dir)
+			if e := os.WriteFile(f, []byte(pwd), COMMON_FILE_MODE); e != nil {
+				log.Printf("BaiduPan: 写入解压密码文件 %s 出现问题: %s", f, e.Error())
+			} else {
+				b.upload(f, dir)
+			}
 		}
 	}
 
@@ -226,12 +326,13 @@ func (b *Baidu) login() error {
 	if who, e := b.execute("who"); e != nil {
 		return fmt.Errorf("BaiduPan: who 出现问题: %s", e.Error())
 	} else {
-		re := regexp.MustCompile(`uid: (\d+)`)
+		re := regexp.MustCompile(`uid:\s+(\d+),\s+用户名:\s+([^,]*),`)
 		match := re.FindStringSubmatch(who)
 		if len(match) > 1 {
 			uid := match[1]
 			if uid != "" && uid != "0" {
-				log.Printf("BaiduPan: login, uid: %s\n", uid)
+				username := match[2]
+				log.Printf("BaiduPan: 登录成功, uid: %s, 用户名: %s\n", uid, username)
 				needLogin = false
 			}
 		}

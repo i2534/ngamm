@@ -18,7 +18,6 @@ import (
 )
 
 var (
-	DIR_TOPIC_ROOT    = "."        // 帖子存储根目录, 目前只在工作目录
 	DIR_RECYCLE_BIN   = "recycles" // 回收站目录
 	POST_MARKDOWN     = "post.md"
 	PROCESS_INI       = "process.ini"
@@ -110,7 +109,7 @@ func formatTimestamp(timestamp time.Time) string {
 }
 
 func NewServer(cfg *SrvCfg, nga *Client) (*Server, error) {
-	tr, e := nga.GetRoot().SafeOpenRoot(DIR_TOPIC_ROOT)
+	tr, e := OpenRoot(nga.GetTopicRoot())
 	if e != nil {
 		return nil, e
 	}
@@ -326,7 +325,7 @@ max_floor = -1`
 				cache.topics.Put(id, topic)
 
 				if cache.pans != nil {
-					go topic.TryTransfer(cache.pans)
+					go topic.AutoTransfer(cache.pans)
 				}
 			}
 		} else {

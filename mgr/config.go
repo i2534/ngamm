@@ -6,23 +6,13 @@ import (
 	"gopkg.in/ini.v1"
 )
 
-type BaiduCfg struct {
-	Root   string
-	Bduss  string
-	Stoken string
-}
-
-type QuarkCfg struct {
-	Root   string
-	Cookie string
-}
-
 type Config struct {
-	Port    int
-	Program string
-	Smile   string
-	Token   string
-	Pan     string
+	Port      int
+	Program   string
+	Smile     string
+	Token     string
+	Pan       string
+	TopicRoot string
 }
 
 func LoadConfig(path string) (*Config, error) {

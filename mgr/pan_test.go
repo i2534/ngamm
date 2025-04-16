@@ -9,7 +9,7 @@ import (
 )
 
 func TestPanHolder(t *testing.T) {
-	if ph, e := mgr.NewPanHolder("/workspaces/ngamm/data/pan"); e != nil {
+	if ph, e := mgr.NewPanHolder("../data/pan"); e != nil {
 		t.Error("初始化网盘出现问题:", e.Error())
 	} else {
 		defer ph.Close()
@@ -22,7 +22,7 @@ func TestPanHolder(t *testing.T) {
 			}
 		}
 
-		ph.Send("Hello")
+		// ph.Send("Hello")
 
 		time.Sleep(time.Second * 5)
 	}

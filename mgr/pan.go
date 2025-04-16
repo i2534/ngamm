@@ -14,13 +14,19 @@ import (
 	"gopkg.in/ini.v1"
 )
 
+const (
+	TRANSFER_AUTO   = "auto"   // 自动转存
+	TRANSFER_MANUAL = "manual" // 手动转存
+)
+
 var (
-	PAN_CONFIG = "config.ini"
-	PAN_JSON   = "pan.json"
+	PAN_CONFIG   = "config.ini"
+	PAN_JSON     = "pan.json"
+	PAN_PWD_FILE = "_uzp.txt"
 
 	panURLRegex *regexp.Regexp = regexp.MustCompile(`\((https://pan\..+)\)`)
 	panTqmRegex *regexp.Regexp = regexp.MustCompile(`提取码[：:\s]*([a-zA-Z0-9]{4})`)
-	panPwdRegex *regexp.Regexp = regexp.MustCompile(`解压密码[：:\s统一为]*(.+)`)
+	panPwdRegex *regexp.Regexp = regexp.MustCompile(`解压密?码[：:\s统一为]*(.+)`)
 )
 
 // 网盘
@@ -28,7 +34,7 @@ type Pan interface {
 	io.Closer
 	Name() string
 	Init() error
-	Support(md PanMetadata) bool
+	Support(md PanMetadata, transferType string) bool
 	// 保存分享到网盘, 实现自行处理队列
 	Transfer(topicId int, md PanMetadata) error
 	SetHolder(holder *PanHolder)
@@ -140,47 +146,58 @@ func (p *PanHolder) initBaidu(cfg *ini.Section) {
 	if cfg == nil {
 		return
 	}
-	if b, _ := cfg.Key("enable").Bool(); b {
-		bc := BaiduCfg{
-			Root:   filepath.Join(p.Root, "baidu"),
-			Bduss:  cfg.Key("bduss").String(),
-			Stoken: cfg.Key("stoken").String(),
-		}
-		baidu := NewBaidu(bc)
-		if e := baidu.Init(); e != nil {
-			log.Println("初始化失败:", e.Error())
-			p.Send(e.Error())
-		} else {
-			log.Println("BaiduPan 初始化完成")
-			baidu.SetHolder(p)
-			p.Pans = append(p.Pans, baidu)
-		}
+
+	bc := new(BaiduCfg)
+	if e := cfg.MapTo(bc); e != nil {
+		log.Println("BaiduPan 配置解析失败:", e.Error())
 	} else {
-		log.Println("BaiduPan 未启用")
+		if bc.Enable {
+			if bc.Transfer == "" {
+				bc.Transfer = TRANSFER_AUTO
+			}
+			bc.Root = filepath.Join(p.Root, "baidu")
+			baidu := NewBaidu(*bc)
+			if e := baidu.Init(); e != nil {
+				log.Println("初始化失败:", e.Error())
+				p.Send(e.Error())
+			} else {
+				log.Println("BaiduPan 初始化完成")
+				baidu.SetHolder(p)
+				p.Pans = append(p.Pans, baidu)
+			}
+		} else {
+			log.Println("BaiduPan 未启用")
+		}
 	}
 }
 func (p *PanHolder) initQuark(cfg *ini.Section) {
 	if cfg == nil {
 		return
 	}
-	if b, _ := cfg.Key("enable").Bool(); b {
-		qc := QuarkCfg{
-			Root:   filepath.Join(p.Root, "quark"),
-			Cookie: cfg.Key("cookie").String(),
-		}
-		quark := NewQuarkPan(qc)
-		if e := quark.Init(); e != nil {
-			log.Println("初始化失败:", e.Error())
-			p.Send(e.Error())
-		} else {
-			log.Println("QuarkPan 初始化完成")
-			quark.SetHolder(p)
-			p.Pans = append(p.Pans, quark)
-		}
+	qc := new(QuarkCfg)
+	if e := cfg.MapTo(qc); e != nil {
+		log.Println("QuarkPan 配置解析失败:", e.Error())
 	} else {
-		log.Println("QuarkPan 未启用")
+		if qc.Enable {
+			if qc.Transfer == "" {
+				qc.Transfer = TRANSFER_AUTO
+			}
+			qc.Root = filepath.Join(p.Root, "quark")
+			quark := NewQuarkPan(*qc)
+			if e := quark.Init(); e != nil {
+				log.Println("初始化失败:", e.Error())
+				p.Send(e.Error())
+			} else {
+				log.Println("QuarkPan 初始化完成")
+				quark.SetHolder(p)
+				p.Pans = append(p.Pans, quark)
+			}
+		} else {
+			log.Println("QuarkPan 未启用")
+		}
 	}
 }
+
 func (p *PanHolder) initHook(cfg *ini.File) {
 	if cfg == nil {
 		return
@@ -204,7 +221,8 @@ func (p *PanHolder) initHook(cfg *ini.File) {
 	}
 }
 
-func (t *Topic) TryTransfer(ph *PanHolder) {
+// 自动转存
+func (t *Topic) AutoTransfer(ph *PanHolder) {
 	if ph == nil {
 		return
 	}
@@ -215,25 +233,25 @@ func (t *Topic) TryTransfer(ph *PanHolder) {
 		return
 	}
 
-	pms, e := t.GetPanMetadata()
+	mds, e := t.GetPanMetadata()
 	if e != nil {
 		log.Printf("获取网盘链接信息失败: %s\n", e.Error())
 		return
 	}
-	for _, pm := range pms {
+	for _, md := range mds {
 		for _, pan := range ph.Pans {
-			if !pan.Support(*pm) {
+			if !pan.Support(*md, TRANSFER_AUTO) {
 				continue
 			}
-			if e := pan.Transfer(t.Id, *pm); e != nil {
+			if e := pan.Transfer(t.Id, *md); e != nil {
 				log.Printf("保存 %d 到网盘 %s 失败: %s\n", t.Id, pan.Name(), e.Error())
 				continue
 			}
-			pm.Saved = true
+			md.Saved = true
 		}
 	}
 
-	data, e := json.MarshalIndent(pms, "", "  ")
+	data, e := json.MarshalIndent(mds, "", "  ")
 	if e != nil {
 		log.Printf("持久化网盘 JSON 失败: %s\n", e.Error())
 	} else if e := t.root.WriteAll(PAN_JSON, data); e != nil {
@@ -242,7 +260,7 @@ func (t *Topic) TryTransfer(ph *PanHolder) {
 }
 
 func (t *Topic) GetPanMetadata() ([]*PanMetadata, error) {
-	pms := make([]*PanMetadata, 0)
+	mds := make([]*PanMetadata, 0)
 	floor := 0
 
 	pwd := ""
@@ -256,7 +274,7 @@ func (t *Topic) GetPanMetadata() ([]*PanMetadata, error) {
 			pm = &PanMetadata{
 				URL: url,
 			}
-			pms = append(pms, pm)
+			mds = append(mds, pm)
 		}
 		m = panTqmRegex.FindStringSubmatch(nl)
 		if len(m) > 1 {
@@ -282,8 +300,8 @@ func (t *Topic) GetPanMetadata() ([]*PanMetadata, error) {
 		pwd = html.UnescapeString(pwd)
 	}
 
-	for _, pm := range pms {
-		pm.Pwd = pwd
+	for _, md := range mds {
+		md.Pwd = pwd
 	}
-	return pms, e
+	return mds, e
 }

@@ -9,8 +9,7 @@
     <script src="/asset/home.js?v={{.Version}}"></script>
     <script>
         const hasToken = '{{.HasToken}}'.toLowerCase() === 'true';
-        const ngaPostBase = '{{.BaseUrl}}/read.php?tid=';
-        init(hasToken, ngaPostBase);
+        init(hasToken, '{{.BaseUrl}}');
     </script>
 </head>
 

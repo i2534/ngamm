@@ -8,14 +8,22 @@ import (
 	"gopkg.in/ini.v1"
 )
 
-func testInitQuarkPan(t *testing.T) *mgr.QuarkPan {
-	cfg, e := ini.Load("/workspaces/ngamm/ngapost2md/quark.ini")
+func testGetQuarkCookie(t *testing.T) string {
+	cfg, e := ini.Load("../data/pan/config.ini")
 	if e != nil {
 		t.Fatalf("Failed to load config: %v", e)
 	}
-	cookie := cfg.Section("").Key("cookie").String()
+	cookie := cfg.Section("quark").Key("cookie").String()
+	if cookie == "" {
+		t.Fatal("Quark cookie is empty")
+	}
+	return cookie
+}
+
+func testInitQuarkPan(t *testing.T) *mgr.QuarkPan {
+	cookie := testGetQuarkCookie(t)
 	quark := mgr.NewQuarkPan(mgr.QuarkCfg{
-		Root:   "/workspaces/ngamm/ngapost2md",
+		Root:   "../data/pan/quark",
 		Cookie: cookie,
 	})
 
@@ -23,6 +31,17 @@ func testInitQuarkPan(t *testing.T) *mgr.QuarkPan {
 		t.Fatalf("Failed to initialize Quark: %v", err)
 	}
 	return quark
+}
+
+func TestQuarkDelete(t *testing.T) {
+	cookie := testGetQuarkCookie(t)
+	quark := mgr.NewQuark(cookie)
+	quark.Init()
+	getFids := quark.GetFids([]string{"/test/aaaa"})
+	f0 := getFids[0]
+	t.Logf("Fid: %+v", f0)
+	r := quark.Delete([]string{f0["fid"].(string)})
+	t.Logf("Result: %+v", r)
 }
 
 func TestQuarkInit(t *testing.T) {

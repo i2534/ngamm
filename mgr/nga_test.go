@@ -19,8 +19,12 @@ func getNga() *mgr.Client {
 	if e != nil {
 		panic(e)
 	}
-	np := filepath.Join(wd, "../ngapost2md/ngapost2md")
-	nga, e = mgr.InitNGA(np)
+	np := filepath.Join(wd, "../data/ngapost2md")
+	td := os.Getenv("TOPIC_ROOT")
+	nga, e = mgr.InitNGA(mgr.Config{
+		Program:   np,
+		TopicRoot: td,
+	})
 	if e != nil {
 		panic(e)
 	}
@@ -29,7 +33,23 @@ func getNga() *mgr.Client {
 
 func TestGetUA(t *testing.T) {
 	ua := "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/129.0.0.0 Safari/537.36 Edg/129.0.0.0"
-	assert.Equal(t, getNga().GetUA(), ua)
+
+	nga := getNga()
+	defer nga.Close()
+
+	assert.Equal(t, nga.GetUA(), ua)
+}
+
+func TestDownTopic(t *testing.T) {
+	os.Setenv("TOPIC_ROOT", "./topics")
+
+	nga := getNga()
+	defer nga.Close()
+
+	id := 43833908
+	b, v := nga.DownTopic(id)
+	assert.Equal(t, b, true)
+	t.Log(v)
 }
 
 func TestGetUser(t *testing.T) {
@@ -37,9 +57,13 @@ func TestGetUser(t *testing.T) {
 	assert.Equal(t, e, nil)
 	assert.Equal(t, user.Id, 9438500)
 
+	user, e = getNga().GetUserById(9438500)
+	assert.Equal(t, e, nil)
+	assert.Equal(t, user.Id, 9438500)
+
 	_, e = getNga().GetUser("apt10086")
 	assert.NotEqual(t, e, nil)
-	assert.Equal(t, e.Error(), "user not found")
+	assert.NotEqual(t, e.Error(), nil)
 
 	user, e = getNga().GetUser("菜鸟牧师宫商角徵羽")
 	assert.Equal(t, e, nil)

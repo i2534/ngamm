@@ -1,5 +1,6 @@
-function init(hasToken, ngaPostBase) {
+function init(hasToken, ngaBase) {
     const origin = window.location.origin;
+    const ngaPostBase = `${ngaBase}/read.php?tid=`;
     const headers = {};
     const sorts = { key: 'Id', order: 'desc' };
     const pageSize = 15;
@@ -116,7 +117,7 @@ function init(hasToken, ngaPostBase) {
         <tr>
             <td><a href="${ngaPostBase}${topic.Id}" target="_blank">${topic.Id}</a></td>
             <td><span class="title" title="${topic.Title}">${topic.Title}</span></td>
-            <td><span class="author" uid="${topic.Uid}">${topic.Author}</span></td>
+            <td><span class="author" uid="${topic.Uid}"><a href="${ngaBase}/nuke.php?func=ucp&uid=${topic.Uid}}" target="_blank">${topic.Author}<a></span></td>
             <td>${topic.MaxFloor}</td>
             <td><span class="update-${topic.Result.Success ? 'success' : 'failed'}">${topic.Result.Time}</span></td>
             <td>${topic.Metadata.UpdateCron}</td>

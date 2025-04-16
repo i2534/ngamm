@@ -27,22 +27,17 @@ const (
 )
 
 type User struct {
-	Id              int          `json:"id"`
-	Name            string       `json:"name"`
-	Loc             string       `json:"loc"`
-	RegDate         CustomTime   `json:"regDate"`
-	Subscribed      bool         `json:"subscribed"`
-	SubFilter       *[]string    `json:"filter,omitempty"`
-	subscribeCronId cron.EntryID // 订阅任务的 ID
-	bootSubTask     *time.Timer  // 启动后准备订阅任务的定时器
+	Id         int          `json:"id"`
+	Name       string       `json:"name"`
+	Loc        string       `json:"loc"`
+	RegDate    CustomTime   `json:"regDate"`
+	Subscribed bool         `json:"subscribed"`
+	SubFilter  *[]string    `json:"filter,omitempty"`
+	subCronId  cron.EntryID // 订阅任务的 ID
+	forSubTask *time.Timer  // 启动后准备开始订阅任务的定时器
+	saved      bool         // 是否已经保存到文件
 }
 
-type users struct {
-	root   *ExtRoot
-	lock   *sync.RWMutex
-	data   map[string]User
-	failed map[string]string //加载失败的用户
-}
 type userState int
 
 const (
@@ -51,127 +46,141 @@ const (
 	state_fail
 )
 
-func (u *users) load() {
-	u.lock.Lock()
-	defer u.lock.Unlock()
+type users struct {
+	root   *ExtRoot
+	data   *SyncMap[string, *User]  // 用户信息
+	failed *SyncMap[string, string] // 加载失败的用户
+}
 
-	us := make([]User, 0)
-	es, e := u.root.ReadDir(".")
+func newUsers(root *ExtRoot) *users {
+	return &users{
+		root:   root,
+		data:   NewSyncMap[string, *User](),
+		failed: NewSyncMap[string, string](),
+	}
+}
+
+func (u *users) load() {
+	fs, e := u.root.ReadDir()
 	if e != nil {
 		log.Printf("读取用户信息目录失败: %s\n", e.Error())
 		return
 	}
-
-	for _, e := range es {
-		if e.IsDir() || !strings.HasSuffix(e.Name(), ".json") {
+	for _, f := range fs {
+		if f.IsDir() || !strings.HasSuffix(f.Name(), ".json") {
 			continue
 		}
-		f, e := u.root.Open(e.Name())
+		f, e := u.root.Open(f.Name())
 		if e != nil {
 			log.Printf("读取用户信息文件失败: %s\n", e.Error())
 		} else {
-			defer f.Close()
 			data, e := io.ReadAll(f)
 			if e != nil {
 				log.Printf("读取用户信息失败: %s\n", e.Error())
 			}
-			var u User
-			e = json.Unmarshal(data, &u)
+			user := &User{
+				saved: true,
+			}
+			e = json.Unmarshal(data, user)
 			if e != nil {
 				log.Printf("解析用户信息失败: %s\n", e.Error())
 			} else {
-				us = append(us, u)
+				u.data.Put(user.Name, user)
 			}
+
+			f.Close()
 		}
 	}
-
-	u.data = make(map[string]User)
-	for _, user := range us {
-		u.data[user.Name] = user
-	}
 }
-func (u *users) Get(name string) (User, userState) {
-	u.lock.RLock()
-	defer u.lock.RUnlock()
+func (u users) uidToName(uid int) string {
+	return fmt.Sprintf("UID%d", uid)
+}
 
-	if _, has := u.failed[name]; has {
-		return User{}, state_fail
+func (u *users) Get(name string) (*User, userState) {
+	if u.failed.Has(name) {
+		return nil, state_fail
 	}
 
-	user, ok := u.data[name]
+	user, ok := u.data.Get(name)
 	if ok {
 		return user, state_have
 	}
 	return user, state_miss
 }
-func (u *users) GetByUid(uid int) (User, userState) {
-	u.lock.RLock()
-	defer u.lock.RUnlock()
 
-	if _, has := u.failed[fmt.Sprintf("UID%d", uid)]; has {
-		return User{}, state_fail
+func (u *users) GetByUid(uid int) (*User, userState) {
+	n := u.uidToName(uid)
+	if u.failed.Has(n) {
+		return nil, state_fail
 	}
 
-	for _, user := range u.data {
+	if user, ok := u.data.Get(n); ok {
+		return user, state_have
+	}
+
+	for _, user := range u.data.Values() {
 		if user.Id == uid {
 			return user, state_have
 		}
 	}
-	return User{}, state_miss
+
+	return nil, state_miss
 }
-func (u *users) Put(name string, user User) {
-	u.lock.Lock()
-	defer u.lock.Unlock()
 
-	u.data[name] = user
+func (u *users) PutAndSave(user *User) {
+	u.data.Put(user.Name, user)
+	un := u.uidToName(user.Id)
+	if user.Name != un {
+		u.data.Put(un, user)
+	}
 
-	fn := fmt.Sprintf("%d.json", user.Id)
-	f, e := u.root.Create(fn)
-	if e != nil {
-		log.Printf("创建用户信息文件失败: %s\n", e.Error())
+	if user.saved {
 		return
 	}
-	defer f.Close()
 
 	data, e := json.Marshal(user)
 	if e != nil {
 		log.Printf("序列化用户信息失败: %s\n", e.Error())
 		return
 	}
+	f, e := u.root.Create(fmt.Sprintf("%d.json", user.Id))
+	if e != nil {
+		log.Printf("创建用户信息文件失败: %s\n", e.Error())
+		return
+	}
+	defer f.Close()
 	if _, e := f.Write(data); e != nil {
 		log.Printf("写入用户信息失败: %s\n", e.Error())
 	}
-}
-func (u *users) Fail(name, msg string) {
-	u.lock.Lock()
-	defer u.lock.Unlock()
 
-	u.failed[name] = msg
+	user.saved = true
+}
+
+func (u *users) Fail(name, msg string) {
+	u.failed.Put(name, msg)
 }
 func (u *users) FailMsg(name string) string {
-	u.lock.RLock()
-	defer u.lock.RUnlock()
-
-	return u.failed[name]
+	if msg, ok := u.failed.Get(name); ok {
+		return msg
+	}
+	return ""
 }
 
 func (u *users) Close() error {
-	u.lock.Lock()
-	defer u.lock.Unlock()
-
-	for _, user := range u.data {
-		if user.bootSubTask != nil {
-			user.bootSubTask.Stop()
+	u.data.EAC((func(name string, user *User) {
+		if user.forSubTask != nil {
+			user.forSubTask.Stop()
 		}
-	}
+	}))
+	u.root.Close()
 	return nil
 }
 
 type Client struct {
-	program string
-	version string
 	root    *ExtRoot
-	cfg     *ini.File
+	dir     string // root 的绝对路径
+	program string // ngapost2md 程序路径
+	topics  string // 帖子目录
 	ua      string
 	baseURL string
 	uid     string
@@ -179,43 +188,68 @@ type Client struct {
 	users   *users
 	cron    *cron.Cron
 	srv     *Server
+	lock    *sync.Mutex // program exec lock
 }
 
-func InitNGA(program string) (*Client, error) {
+func InitNGA(global Config) (*Client, error) {
+	program := global.Program
 	dir := filepath.Dir(program)
-	er, e := OpenRoot(dir)
+
+	topics := dir
+	if global.TopicRoot != "" {
+		if !filepath.IsAbs(global.TopicRoot) {
+			topics = filepath.Join(dir, global.TopicRoot)
+		}
+	}
+	topics, e := filepath.Abs(topics)
 	if e != nil {
 		return nil, e
 	}
-	ur, e := er.SafeOpenRoot(USER_DIR)
+
+	root, e := OpenRoot(dir)
+	if e != nil {
+		return nil, e
+	}
+	dir, e = root.AbsPath()
+	if e != nil {
+		return nil, e
+	}
+
+	userDir, e := root.SafeOpenRoot(USER_DIR)
 	if e != nil {
 		return nil, e
 	}
 
 	client := &Client{
+		root:    root,
+		dir:     dir,
 		program: program,
-		root:    er,
-		users: &users{
-			root:   ur,
-			lock:   &sync.RWMutex{},
-			data:   make(map[string]User),
-			failed: make(map[string]string),
-		},
-		cron: cron.New(cron.WithLocation(TIME_LOC)),
+		topics:  topics,
+		users:   newUsers(userDir),
+		cron:    cron.New(cron.WithLocation(TIME_LOC)),
+		lock:    &sync.Mutex{},
 	}
-	version := client.GetVersion()
-	if version == "" {
-		return nil, errors.New("无法获取 ngapost2md 版本")
+
+	version, e := client.version()
+	if e != nil || version == "" {
+		msg := ""
+		if e != nil {
+			msg = e.Error()
+		}
+		return nil, fmt.Errorf("无法获取 ngapost2md 版本 %s", msg)
 	}
 	log.Printf("ngapost2md 版本: %s\n", version)
+
 	fp := filepath.Join(dir, NGA_CFG)
 	if !IsExist(fp) {
-		client.execute([]string{"--gen-config-file"})
+		client.execute([]string{"--gen-config-file"}, dir)
 	}
 	cfg, e := ini.Load(fp)
 	if e != nil {
 		return nil, e
 	}
+	cfg.BlockMode = false
+
 	network := cfg.Section("network")
 	ua := network.Key("ua").String()
 	if isEnclosed(ua, '<', '>') {
@@ -230,23 +264,26 @@ func InitNGA(program string) (*Client, error) {
 		return nil, errors.New("请在配置文件中填写正确的 network.ngaPassportCid")
 	}
 
-	client.version = version
-	client.cfg = cfg
 	client.ua = ua
-	client.baseURL = network.Key("base_url").String()
 	client.uid = uid
 	client.cid = cid
-	client.users.load()
+	client.baseURL = network.Key("base_url").String()
 
-	for un, user := range client.users.data {
+	if topics != dir { // 帖子目录和程序目录不一致, 复制配置文件到帖子目录
+		log.Printf("复制配置文件到帖子目录: %s\n", topics)
+		if e := CopyFile(fp, filepath.Join(topics, NGA_CFG)); e != nil {
+			return nil, fmt.Errorf("复制配置文件到帖子目录失败: %s", e.Error())
+		}
+	}
+
+	client.users.load()
+	for _, user := range client.users.data.Values() {
 		delay := time.Duration(rand.Intn(600)) * time.Second // 10 分钟内随机, 避免同时发送请求
-		user.bootSubTask = time.AfterFunc(delay, func() {
-			nu := &user
-			if e := client.doSubscribe(nu); e != nil {
-				log.Printf("订阅用户 %s 出现问题: %s\n", nu.Name, e.Error())
+		user.forSubTask = time.AfterFunc(delay, func() {
+			if e := client.doSubscribe(user); e != nil {
+				log.Printf("订阅用户 %s 出现问题: %s\n", user.Name, e.Error())
 			}
 		})
-		client.users.data[un] = user
 	}
 
 	client.cron.Start()
@@ -261,46 +298,47 @@ func isEnclosed(s string, start, end rune) bool {
 	return rune(s[0]) == start && rune(s[len(s)-1]) == end
 }
 
-func (c *Client) GetRoot() *ExtRoot {
+func (c Client) GetRoot() *ExtRoot {
 	return c.root
 }
-
-func (c *Client) GetVersion() string {
-	if c.version == "" {
-		out, e := c.execute([]string{"-v"})
-		if e != nil {
-			return ""
-		}
-		lines := strings.Split(out, "\n")
-		if len(lines) > 0 {
-			line := lines[0]
-			if strings.HasPrefix(line, "ngapost2md") {
-				c.version = strings.TrimSpace(strings.TrimPrefix(line, "ngapost2md"))
-			}
-		}
-	}
-	return c.version
-}
-
-func (c *Client) GetUA() string {
+func (c Client) GetUA() string {
 	return c.ua
 }
-func (c *Client) BaseURL() string {
+func (c Client) BaseURL() string {
 	return c.baseURL
 }
 
+// absolute path
+func (c Client) GetTopicRoot() string {
+	return c.topics
+}
+
+func (c *Client) version() (string, error) {
+	out, e := c.execute([]string{"-v"}, "")
+	if e != nil {
+		return "", e
+	}
+	lines := strings.Split(out, "\n")
+	if len(lines) > 0 {
+		line := strings.TrimSpace(lines[0])
+		if strings.HasPrefix(line, "ngapost2md") {
+			return strings.TrimSpace(strings.TrimPrefix(line, "ngapost2md")), nil
+		}
+	}
+	return "", errors.New("无输出")
+}
+
 func (c *Client) DownTopic(tid int) (bool, string) {
-	out, e := c.execute([]string{strconv.Itoa(tid)})
+	out, e := c.execute([]string{strconv.Itoa(tid)}, c.topics)
 	if e != nil {
 		log.Printf("下载帖子 %d 出现问题: %s\n", tid, e.Error())
 	} else {
-
 		log.Printf("\n%s", out)
 
 		lines := strings.Split(out, "\n")
 		for i := len(lines) - 1; i >= 0; i-- {
-			line := lines[i]
-			if strings.TrimSpace(line) == "" {
+			line := strings.TrimSpace(lines[i])
+			if line == "" {
 				continue
 			}
 			if strings.Contains(line, "任务结束") {
@@ -316,6 +354,29 @@ func (c *Client) DownTopic(tid int) (bool, string) {
 		}
 	}
 	return false, ""
+}
+
+func (c *Client) execute(args []string, dir string) (string, error) {
+	c.lock.Lock()
+	defer c.lock.Unlock()
+
+	cmd := exec.Command(c.program, args...)
+	if dir == "" {
+		cmd.Dir = c.dir
+	} else {
+		cmd.Dir = dir
+	}
+	var out bytes.Buffer
+	cmd.Stdout = &out
+	cmd.Stderr = &out
+	if e := cmd.Run(); e != nil {
+		if e, ok := e.(*exec.ExitError); ok {
+			log.Printf("命令执行返回非零退出状态: %s\n", e)
+			return strings.TrimSpace(out.String()), nil
+		}
+		return strings.TrimSpace(out.String()), e
+	}
+	return strings.TrimSpace(out.String()), nil
 }
 
 func (c *Client) getHTML(url string) (string, error) {
@@ -349,32 +410,29 @@ func (c *Client) getHTML(url string) (string, error) {
 	}
 	return string(data), nil
 }
-func (c *Client) extractUserInfo(html string, username string) (User, error) {
+func (c *Client) extractUserInfo(html string) (*User, error) {
 	if strings.Contains(html, "找不到用户") || strings.Contains(html, "无此用户") || strings.Contains(html, "参数错误") {
-		c.users.Fail(username, "找不到用户")
-		return User{}, fmt.Errorf("未找到用户")
+		return nil, fmt.Errorf("未找到用户")
 	}
 
 	re := regexp.MustCompile(`__UCPUSER\s*=(.+)?;`)
 	matches := re.FindStringSubmatch(html)
 	if len(matches) < 2 {
-		c.users.Fail(username, "未匹配到用户信息")
-		return User{}, fmt.Errorf("未匹配到用户信息")
+		return nil, fmt.Errorf("未匹配到用户信息")
 	}
 	val := strings.TrimSpace(matches[1])
 	if len(val) > 0 {
 		info := make(map[string]any)
 		e := json.Unmarshal([]byte(val), &info)
 		if e != nil {
-			c.users.Fail(username, e.Error())
-			return User{}, fmt.Errorf("解析用户信息 %s 失败: %w", val, e)
+			return nil, fmt.Errorf("解析用户信息 %s 失败: %w", val, e)
 		}
 		uid := int(info["uid"].(float64))
 		name := info["username"].(string)
 		ipLoc := info["ipLoc"].(string)
 		regDate := int64(info["regdate"].(float64))
 
-		log.Printf("获取到用户 %s[%d] 的信息\n", username, uid)
+		log.Printf("获取到用户 %s[%d] 的信息\n", name, uid)
 
 		u := User{
 			Id:      uid,
@@ -383,38 +441,61 @@ func (c *Client) extractUserInfo(html string, username string) (User, error) {
 			RegDate: CustomTime{time.Unix(regDate, 0)},
 		}
 
-		c.users.Put(username, u)
-		if username != name {
-			c.users.Put(name, u)
-		}
-		return u, nil
+		return &u, nil
 	}
-	c.users.Fail(username, "匹配到空的用户信息")
-	return User{}, fmt.Errorf("匹配到空的用户信息")
+	return nil, fmt.Errorf("匹配到空的用户信息")
 }
-func (c *Client) GetUserById(uid int) (User, error) {
-	if u, s := c.users.GetByUid(uid); s == state_have {
-		return u, nil
-	} else if s == state_fail {
-		return User{}, fmt.Errorf("获取用户 %d 失败, 因为上次失败: %s", uid, c.users.FailMsg(fmt.Sprintf("UID%d", uid)))
-	}
+
+func (c *Client) getUserById(uid int) (*User, error) {
 	url := fmt.Sprintf("%s/nuke.php?func=ucp&uid=%d", c.baseURL, uid)
 	html, e := c.getHTML(url)
 	if e != nil {
+		return nil, e
+	}
+	return c.extractUserInfo(html)
+}
+
+func (c *Client) GetUserById(uid int) (User, error) {
+	users := c.users
+	if u, s := users.GetByUid(uid); s == state_have {
+		return *u, nil
+	} else if s == state_fail {
+		return User{}, fmt.Errorf("获取用户 %d 失败, 因为上次失败: %s", uid, c.users.FailMsg(users.uidToName(uid)))
+	}
+
+	u, e := c.getUserById(uid)
+	if e != nil {
+		users.Fail(users.uidToName(uid), e.Error())
 		return User{}, e
 	}
 
-	return c.extractUserInfo(html, fmt.Sprintf("UID%d", uid))
+	users.PutAndSave(u)
+	return *u, nil
 }
+
+// 尝试从帖子中获取用户信息, 主要是更新用户名为 UIDxxx
+func (c *Client) SetTopicUser(uid int, username string) {
+	if username == c.users.uidToName(uid) {
+		return
+	}
+	user, s := c.users.GetByUid(uid)
+	if s == state_have && user.Name != username {
+		user.Name = username
+		user.saved = false
+		c.users.PutAndSave(user)
+	}
+}
+
 func (c *Client) GetUser(username string) (User, error) {
 	if username == "" {
 		return User{}, fmt.Errorf("用户名为空")
 	}
 	if u, s := c.users.Get(username); s == state_have {
-		return u, nil
+		return *u, nil
 	} else if s == state_fail {
 		return User{}, fmt.Errorf("获取用户 %s 失败, 因为上次失败: %s", username, c.users.FailMsg(username))
 	}
+
 	eun, e := PathEscapeGBK(username)
 	if e != nil {
 		return User{}, e
@@ -425,7 +506,14 @@ func (c *Client) GetUser(username string) (User, error) {
 		return User{}, e
 	}
 
-	return c.extractUserInfo(html, username)
+	u, e := c.extractUserInfo(html)
+	if e != nil {
+		c.users.Fail(username, e.Error())
+		return User{}, e
+	}
+
+	c.users.PutAndSave(u)
+	return *u, nil
 }
 
 type topicRecord struct {
@@ -441,9 +529,6 @@ func (c *Client) GetUserPost(uid, from int) ([]topicRecord, error) {
 	if e != nil {
 		return nil, e
 	}
-
-	// println(html)
-
 	re := regexp.MustCompile(`<a href='/read.php\?tid=(\d+)' id='(.*?)' class='topic'>(.*?)</a>`)
 	matches := re.FindAllStringSubmatch(html, -1)
 	if len(matches) == 0 {
@@ -476,8 +561,9 @@ func (c *Client) GetUserPost(uid, from int) ([]topicRecord, error) {
 
 func (c *Client) doSubscribe(user *User) error {
 	if user != nil && user.Subscribed {
-		if user.subscribeCronId > 0 {
-			c.cron.Remove(user.subscribeCronId)
+		if user.subCronId > 0 {
+			c.cron.Remove(user.subCronId)
+			user.subCronId = 0
 		}
 		if id, e := c.cron.AddFunc("@every 30m", func() {
 			topics := c.srv.getTopics(user.Name)
@@ -540,7 +626,7 @@ func (c *Client) doSubscribe(user *User) error {
 		}); e != nil {
 			return e
 		} else {
-			user.subscribeCronId = id
+			user.subCronId = id
 		}
 	}
 	return nil
@@ -550,52 +636,36 @@ func (c *Client) Subscribe(uid int, status bool, filter ...string) error {
 		log.Printf("变更用户 %s[%d] 订阅状态: %v\n", u.Name, u.Id, status)
 		if status {
 			if !u.Subscribed {
-				nu := &u
-				nu.Subscribed = true
+				u.Subscribed = true
 				if len(filter) > 0 {
-					nu.SubFilter = &filter
+					u.SubFilter = &filter
 				}
-				if e := c.doSubscribe(nu); e != nil {
+				u.saved = false
+				c.users.PutAndSave(u)
+
+				if e := c.doSubscribe(u); e != nil {
 					return e
 				}
-				c.users.Put(nu.Name, *nu)
 			}
 		} else {
 			if u.Subscribed {
-				if u.subscribeCronId > 0 {
-					c.cron.Remove(u.subscribeCronId)
+				if u.subCronId > 0 {
+					c.cron.Remove(u.subCronId)
+					u.subCronId = 0
 				}
-				if u.bootSubTask != nil {
-					u.bootSubTask.Stop()
-					u.bootSubTask = nil
+				if u.forSubTask != nil {
+					u.forSubTask.Stop()
+					u.forSubTask = nil
 				}
 				u.Subscribed = false
-				c.users.Put(u.Name, u)
+
+				u.saved = false
+				c.users.PutAndSave(u)
 			}
 		}
 		return nil
 	}
 	return fmt.Errorf("用户信息加载失败")
-}
-
-func (c *Client) execute(args []string) (string, error) {
-	dir, e := c.root.AbsPath()
-	if e != nil {
-		return "", e
-	}
-	cmd := exec.Command(c.program, args...)
-	cmd.Dir = dir
-	var out bytes.Buffer
-	cmd.Stdout = &out
-	cmd.Stderr = &out
-	if e := cmd.Run(); e != nil {
-		if e, ok := e.(*exec.ExitError); ok {
-			log.Printf("命令执行返回非零退出状态: %s\n", e)
-			return out.String(), nil
-		}
-		return out.String(), e
-	}
-	return out.String(), nil
 }
 
 func (c *Client) Close() error {

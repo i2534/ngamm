@@ -172,9 +172,7 @@ func LoadTopic(root *ExtRoot, id int, nga *Client) (*Topic, error) {
 	md := NewMetadata()
 	jd, e := dir.ReadAll(METADATA_JSON)
 	if e != nil {
-		if os.IsNotExist(e) {
-			log.Println("未找到帖子的元数据", id)
-		} else {
+		if !os.IsNotExist(e) {
 			log.Println("读取帖子元数据失败:", e)
 		}
 	} else if e := json.Unmarshal(jd, md); e != nil {
@@ -183,6 +181,8 @@ func LoadTopic(root *ExtRoot, id int, nga *Client) (*Topic, error) {
 	topic.Metadata = md
 
 	topic.Modify()
+
+	nga.SetTopicUser(topic.Uid, topic.Author)
 
 	return topic, nil
 }
