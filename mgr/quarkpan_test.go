@@ -53,18 +53,29 @@ func TestQuarkTransfer(t *testing.T) {
 	quark := testInitQuarkPan(t)
 	defer quark.Close()
 
-	if err := quark.Transfer(0, mgr.PanMetadata{
+	if err := quark.Transfer(0, mgr.TransferRecord{
 		URL: "https://pan.quark.cn/s/f8e65247ffaa",
 		Tqm: "k19c",
 	}); err != nil {
 		t.Fatalf("Failed to transfer file: %v", err)
 	}
 
-	if err := quark.Transfer(0, mgr.PanMetadata{
+	if err := quark.Transfer(0, mgr.TransferRecord{
 		URL: "https://pan.quark.cn/s/cfa69cc91b16?pwd=shhh",
 	}); err != nil {
 		t.Fatalf("Failed to transfer file: %v", err)
 	}
 
 	time.Sleep(time.Second * 5)
+}
+
+func TestQuarkLs(t *testing.T) {
+	quark := testInitQuarkPan(t)
+	defer quark.Close()
+
+	if ns, err := quark.Ls("/MyTransfer"); err != nil {
+		t.Fatalf("Failed to list files: %v", err)
+	} else {
+		t.Logf("File: %+v", ns)
+	}
 }

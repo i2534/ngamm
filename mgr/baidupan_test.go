@@ -47,7 +47,7 @@ func TestBaiduTransfer(t *testing.T) {
 	baidu.Init()
 	// baidu.Upload("/workspaces/ngamm/LICENSE", "/我的资源/43800012")
 
-	if err := baidu.Transfer(0, mgr.PanMetadata{
+	if err := baidu.Transfer(0, mgr.TransferRecord{
 		URL: "https://pan.baidu.com/s/1i0Voz5PwgB-TX9xm5-5-Ng?pwd=534h?",
 	}); err != nil {
 		t.Fatalf("Failed to transfer files: %v", err)

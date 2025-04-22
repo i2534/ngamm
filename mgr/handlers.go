@@ -75,6 +75,15 @@ func (srv *Server) regHandlers() {
 		vg.DELETE("/:token/:id", srv.topicForceReload())
 	}
 
+	pg := r.Group("/pan")
+	{
+		if has {
+			pg.Use(srv.viewMiddleware())
+		}
+		pg.GET("/:token/:id", srv.topicPanRecords())
+		pg.POST("/:token/:id", srv.topicPanOperate())
+	}
+
 	r.GET("/", srv.homePage())
 	r.GET("/favicon.ico", srv.favicon())
 	r.GET("/asset/:name", srv.asset())
@@ -296,7 +305,7 @@ func (srv *Server) topicUpdate() func(c *gin.Context) {
 			return
 		}
 
-		md := new(Metadata)
+		md := NewMetadata()
 		if e := c.ShouldBindJSON(md); e != nil {
 			c.JSON(http.StatusBadRequest, toErr("无效的请求数据"))
 			return

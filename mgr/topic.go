@@ -73,6 +73,72 @@ var (
 	regexAuthorIsUID *regexp.Regexp = regexp.MustCompile(`UID(\d+)`)
 )
 
+func (topic *Topic) parse(nga *Client) error {
+	return topic.root.EveryLine(POST_MARKDOWN, func(line string, i int) bool {
+		if i == 0 {
+			topic.Title = strings.TrimLeft(line, "# ")
+		} else if strings.HasPrefix(line, "#####") {
+			m := regexAuthorInfo.FindStringSubmatch(line)
+			if m != nil {
+				t, e := time.Parse("2006-01-02 15:04:05", m[1])
+				if e != nil {
+					log.Println("解析时间失败:", m[1], e)
+					return false
+				}
+
+				topic.Create = FromTime(t)
+				topic.Author = m[2]
+
+				if len(m) > 3 {
+					val := m[3]
+					if val != "" {
+						val = val[1 : len(val)-1]
+					}
+					if val != "" {
+						uid, e := strconv.Atoi(val)
+						if e != nil {
+							log.Println("解析用户 ID 失败:", val, e)
+						} else {
+							topic.Uid = uid
+						}
+					}
+				}
+
+				if topic.Uid == 0 { // 1.6.0 及之前的版本没有 UID
+					go func() {
+						if u, e := nga.GetUser(topic.Author); e != nil {
+							log.Println("获取用户信息失败:", topic.Author, e)
+						} else {
+							topic.Author = u.Name
+							topic.Uid = u.Id
+						}
+					}()
+				} else if regexAuthorIsUID.MatchString(topic.Author) { // 部分用户的名称是 UIDxxxx, 用 uid 拼接出来的
+					m := regexAuthorIsUID.FindStringSubmatch(topic.Author)
+					if m != nil {
+						uid, e := strconv.Atoi(m[1])
+						if e != nil {
+							log.Println("解析用户 ID 失败:", m[1], e)
+						} else {
+							go func() {
+								if u, e := nga.GetUserById(uid); e != nil {
+									log.Println("获取用户信息失败:", topic.Author, e)
+								} else {
+									topic.Author = u.Name
+									topic.Uid = u.Id
+								}
+							}()
+						}
+					}
+				}
+
+				return false
+			}
+		}
+		return true
+	})
+}
+
 func LoadTopic(root *ExtRoot, id int, nga *Client) (*Topic, error) {
 	dir, e := root.SafeOpenRoot(strconv.Itoa(id))
 	if e != nil {
@@ -84,69 +150,8 @@ func LoadTopic(root *ExtRoot, id int, nga *Client) (*Topic, error) {
 	topic := NewTopic(dir, id)
 
 	if dir.IsExist(POST_MARKDOWN) {
-		if e := dir.EveryLine(POST_MARKDOWN, func(line string, i int) bool {
-			if i == 0 {
-				topic.Title = strings.TrimLeft(line, "# ")
-			} else if strings.HasPrefix(line, "#####") {
-				m := regexAuthorInfo.FindStringSubmatch(line)
-				if m != nil {
-					t, e := time.Parse("2006-01-02 15:04:05", m[1])
-					if e != nil {
-						log.Println("解析时间失败:", m[1], e)
-						return false
-					}
-
-					topic.Create = FromTime(t)
-					topic.Author = m[2]
-
-					if len(m) > 3 {
-						val := m[3]
-						if val != "" {
-							val = val[1 : len(val)-1]
-						}
-						if val != "" {
-							uid, e := strconv.Atoi(val)
-							if e != nil {
-								log.Println("解析用户 ID 失败:", val, e)
-							} else {
-								topic.Uid = uid
-							}
-						}
-					}
-
-					if topic.Uid == 0 { // 1.6.0 及之前的版本没有 UID
-						go func() {
-							if u, e := nga.GetUser(topic.Author); e != nil {
-								log.Println("获取用户信息失败:", topic.Author, e)
-							} else {
-								topic.Author = u.Name
-								topic.Uid = u.Id
-							}
-						}()
-					} else if regexAuthorIsUID.MatchString(topic.Author) { // 部分用户的名称是 UIDxxxx, 用 uid 拼接出来的
-						m := regexAuthorIsUID.FindStringSubmatch(topic.Author)
-						if m != nil {
-							uid, e := strconv.Atoi(m[1])
-							if e != nil {
-								log.Println("解析用户 ID 失败:", m[1], e)
-							} else {
-								go func() {
-									if u, e := nga.GetUserById(uid); e != nil {
-										log.Println("获取用户信息失败:", topic.Author, e)
-									} else {
-										topic.Author = u.Name
-										topic.Uid = u.Id
-									}
-								}()
-							}
-						}
-					}
-
-					return false
-				}
-			}
-			return true
-		}); e != nil {
+		if e := topic.parse(nga); e != nil {
+			log.Printf("解析帖子 %d 失败: %s", id, e)
 			return nil, e
 		}
 		if topic.Title == "" {

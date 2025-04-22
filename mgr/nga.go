@@ -475,6 +475,9 @@ func (c *Client) GetUserById(uid int) (User, error) {
 
 // 尝试从帖子中获取用户信息, 主要是更新用户名为 UIDxxx
 func (c *Client) SetTopicUser(uid int, username string) {
+	if username == "" {
+		return
+	}
 	if username == c.users.uidToName(uid) {
 		return
 	}

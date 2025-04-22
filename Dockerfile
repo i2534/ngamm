@@ -48,7 +48,10 @@ COPY --from=builder /app/main ./ngamm
 COPY --from=builder /app/assets/pan-config.ini ./pan-config.ini
 COPY entrypoint.sh .
 # 设置环境变量
+# 访问 Token
 # ENV TOKEN=""
+# 帖子单独存放路径, 可以是绝对地址或相对地址(相对于 ngapost2md)
+# ENV TOPIC_ROOT=""
 # 赋予脚本执行权限并执行脚本
 RUN chmod +x entrypoint.sh && sh entrypoint.sh prepare
 # 挂载文件夹

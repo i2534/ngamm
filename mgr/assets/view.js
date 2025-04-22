@@ -76,7 +76,13 @@ function render(ngaBase, id, token, content) {
         if (!href.startsWith('#')) {
             target = ' target="_blank"';
         }
-        return `<a href="${fixSrc(href, title)}" title="${title || text}"${target}>${text === 'url' ? href : text}</a>`;
+        const src = fixSrc(href, title);
+        let ret = `<a href="${src}" title="${title || text}"${target}>${text === 'url' ? href : text}</a>`;
+
+        if (src && src.includes('https://pan.')) {
+            ret = `${ret}<span class="netpan" ${attrSrc}="${src}"></span>`;
+        }
+        return ret;
     }
     function makeVideo(src, title, poster) {
         let extra = '';
@@ -363,6 +369,118 @@ function render(ngaBase, id, token, content) {
         document.body.appendChild(overlay);
     }
 
+    async function processNetPan(parent) {
+        const pans = await fetch(`${origin}/pan/${token}/${id}?${Date.now()}`)
+            .then(r => {
+                if (r.ok) {
+                    return r.json();
+                } else {
+                    console.log(`请求网盘数据失败: ${r.statusText}`);
+                    return [];
+                }
+            });
+        const sns = parent.querySelectorAll('span.netpan');
+        for (const e of sns) {
+            e.innerHTML = '';
+        }
+
+        if (Array.isArray(pans) && pans.length > 0) {
+            sns.forEach(e => {
+                const src = e.getAttribute(attrSrc);
+                for (const pan of pans) {
+                    if (pan.URL != src) {
+                        continue;
+                    }
+                    if (e.children.length > 0) {
+                        continue; // 兼容重复的记录
+                    }
+                    switch (pan.Status) {
+                        case 'pending': {
+                            const btn = document.createElement('button');
+                            btn.classList.add('netpan-opt');
+                            btn.classList.add('netpan-opt-save');
+                            btn.innerHTML = '<i class="fa fa-floppy-o"></i>';
+                            btn.title = '当前文件未保存, 点击保存到网盘';
+                            btn.addEventListener('click', () => {
+                                optNetPan('save', pan.URL, btn);
+                            });
+                            e.appendChild(btn);
+                            break;
+                        }
+                        case 'failed': {
+                            const btn = document.createElement('button');
+                            btn.classList.add('netpan-opt');
+                            btn.classList.add('netpan-opt-retry');
+                            btn.innerHTML = '<i class="fa fa-refresh"></i>';
+                            btn.title = `保存失败: ${pan.Message}, 点击重新保存到网盘`;
+                            btn.addEventListener('click', () => {
+                                optNetPan('retry', pan.URL, btn);
+                            });
+                            e.appendChild(btn);
+                            // break; //也有可能是重复保存导致失败, 所以都可以有删除选项
+                        }
+                        case 'success': {
+                            const btn = document.createElement('button');
+                            btn.classList.add('netpan-opt');
+                            btn.classList.add('netpan-opt-delete');
+                            btn.innerHTML = '<i class="fa fa-trash"></i>';
+                            btn.title = '当前文件已保存, 点击删除网盘文件';
+                            btn.addEventListener('click', () => {
+                                confirm('会删除当前帖子在网盘内的所有内容, 是否删除?') && optNetPan('delete', pan.URL, btn);
+                            });
+                            e.appendChild(btn);
+                            break;
+                        }
+                    }
+
+                }
+            });
+        }
+    }
+    function optNetPan(opt, url, tar) {
+        tar.disabled = true;
+
+        fetch(`${origin}/pan/${token}/${id}`, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({
+                opt,
+                url
+            })
+        })
+            .then(r => {
+                if (r.ok) {
+                    return r.json();
+                } else {
+                    console.log(`请求网盘数据失败: ${r.statusText}`);
+                    alert('操作失败, 请稍后再试');
+                    window.location.reload();
+                    return null;
+                }
+            })
+            .then(d => {
+                if (d) {
+                    const msg = d.error;
+                    if (msg) {
+                        alert(msg);
+                        window.location.reload();
+                    } else {
+                        let i = 0;
+                        const task = window.setInterval(() => {
+                            if (i > 30) {
+                                clearInterval(task);
+                            } else {
+                                processNetPan(document.querySelector('#content'));
+                                i++;
+                            }
+                        }, 2000);
+                    }
+                }
+            });
+    }
+
     window.addEventListener('load', () => {
         if (vwm) {
             const btn = document.querySelector('#toggleViewMedia');
@@ -453,6 +571,7 @@ function render(ngaBase, id, token, content) {
                 e.replaceWith(a);
             });
 
+            processNetPan(c);
         }
     });
 }

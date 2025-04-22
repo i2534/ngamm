@@ -27,9 +27,9 @@ var (
 )
 
 type baiduTask struct {
-	topicId  int
-	url      string
-	unzipPwd string
+	topicId int
+	record  TransferRecord
+	opt     PanOpt
 }
 
 type BaiduCfg struct {
@@ -67,12 +67,16 @@ func (b Baidu) Name() string {
 	return "baidu"
 }
 
-func (b Baidu) Support(pmd PanMetadata, transferType string) bool {
-	return b.cfg.Transfer == transferType && strings.Contains(pmd.URL, "pan.baidu.com")
+func (b Baidu) Support(record TransferRecord) bool {
+	return strings.Contains(record.URL, "pan.baidu.com")
 }
 
 func (b *Baidu) SetHolder(holder *PanHolder) {
 	b.holder = holder
+}
+
+func (b Baidu) TransferType() string {
+	return b.cfg.Transfer
 }
 
 func (b *Baidu) initPath() error {
@@ -135,9 +139,19 @@ func (b *Baidu) Init() error {
 			go func() {
 				log.Println("BaiduPan: 启动任务处理协程")
 				for task := range b.tasks {
-					if e := b.doTransfer(task); e != nil {
-						log.Println(e.Error())
-						b.holder.Send(e.Error())
+					var e error
+					var status string
+					if task.opt == PAN_OPT_DELETE {
+						e = b.del(b.topicDir(task.topicId))
+						status = TRANSFER_STATUS_PENDING
+					} else if task.opt == PAN_OPT_SAVE {
+						e = b.doTransfer(task)
+						status = TRANSFER_STATUS_SUCCESS
+					}
+					if e != nil {
+						b.holder.notify(task.topicId, task.record.URL, TRANSFER_STATUS_FAILED, e.Error())
+					} else {
+						b.holder.notify(task.topicId, task.record.URL, status, "")
 					}
 				}
 			}()
@@ -249,7 +263,11 @@ func (b *Baidu) safeDelete(dir string) error {
 		return fmt.Errorf("BaiduPan: 目录 %s 不为空, 请先清空", dir)
 	}
 
-	// https://github.com/qjfoidnh/BaiduPCS-Go/blob/main/internal/pcscommand/rm_mkdir.go#RunRemove
+	return b.del(dir)
+}
+
+// https://github.com/qjfoidnh/BaiduPCS-Go/blob/main/internal/pcscommand/rm_mkdir.go#RunRemove
+func (b *Baidu) del(dir string) error {
 	if v, e := b.execute("rm", dir); e != nil {
 		return fmt.Errorf("BaiduPan: rm %s 出现问题: %s", dir, e.Error())
 	} else {
@@ -258,17 +276,25 @@ func (b *Baidu) safeDelete(dir string) error {
 	return nil
 }
 
+func (b *Baidu) topicDir(topicId int) string {
+	return fmt.Sprintf("%s/%d", b.cfg.Directory, topicId)
+}
+
 // https://github.com/qjfoidnh/BaiduPCS-Go/blob/main/internal/pcscommand/transfer.go#RunShareTransfer
 func (b *Baidu) doTransfer(task baiduTask) error {
-	log.Printf("BaiduPan: 处理转存任务: %d, %s\n", task.topicId, task.url)
-	dir := fmt.Sprintf("%s/%d", b.cfg.Directory, task.topicId)
+	url := task.record.URL
+	if !strings.Contains(url, "?pwd=") {
+		url = fmt.Sprintf("%s?pwd=%s", url, task.record.Tqm)
+	}
+	log.Printf("BaiduPan: 处理转存任务: %d, %s\n", task.topicId, url)
+	dir := b.topicDir(task.topicId)
 
 	if e := b.safeCd(dir); e != nil {
 		b.safeDelete(dir)
 		return e
 	}
-
-	url := task.url
+	// 去除字符串末尾所有不为字母数字的字符
+	url = regexp.MustCompile(`[^a-zA-Z0-9]+$`).ReplaceAllString(url, "")
 	if v, e := b.execute("transfer", url); e != nil {
 		return fmt.Errorf("BaiduPan: transfer %s 出现问题: %s", url, e.Error())
 	} else {
@@ -280,7 +306,7 @@ func (b *Baidu) doTransfer(task baiduTask) error {
 		}
 	}
 
-	pwd := task.unzipPwd
+	pwd := task.record.Pwd
 	if pwd != "" {
 		if !b.isExist(PAN_PWD_FILE) {
 			f := filepath.Join(os.TempDir(), PAN_PWD_FILE)
@@ -294,29 +320,28 @@ func (b *Baidu) doTransfer(task baiduTask) error {
 		}
 	}
 
-	log.Printf("BaiduPan: 处理转存任务完成: %d, %s\n", task.topicId, task.url)
+	log.Printf("BaiduPan: 处理转存任务完成: %d, %s\n", task.topicId, url)
 	return nil
 }
 
-func (b *Baidu) Transfer(topicId int, md PanMetadata) error {
-	uap := md.URL
-	if !strings.Contains(md.URL, "?pwd=") {
-		if md.Tqm == "" {
-			return fmt.Errorf("BaiduPan: 缺少提取码")
-		}
-		uap += "?pwd=" + md.Tqm
-	} else {
-		// 去除字符串末尾所有不为字母数字的字符
-		re := regexp.MustCompile(`[^a-zA-Z0-9]+$`)
-		uap = re.ReplaceAllString(uap, "")
+func (b *Baidu) Transfer(topicId int, record TransferRecord) error {
+	if !strings.Contains(record.URL, "?pwd=") && record.Tqm == "" {
+		return fmt.Errorf("BaiduPan: 缺少提取码")
 	}
-
 	b.tasks <- baiduTask{
-		topicId:  topicId,
-		url:      uap,
-		unzipPwd: md.Pwd,
+		topicId,
+		record,
+		PAN_OPT_SAVE,
 	}
+	return nil
+}
 
+func (b *Baidu) Operate(topicId int, record *TransferRecord, opt PanOpt) error {
+	b.tasks <- baiduTask{
+		topicId,
+		*record,
+		opt,
+	}
 	return nil
 }
 

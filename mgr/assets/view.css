@@ -214,3 +214,63 @@ code {
     /* 确保内容适应容器，保持比例 */
     object-fit: contain;
 }
+
+/* 网盘操作按钮样式 */
+.netpan-opt {
+    border: none;
+    background: transparent;
+    cursor: pointer;
+    width: 28px;
+    height: 28px;
+    border-radius: 50%;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    margin-left: 5px;
+    transition: background-color 0.2s;
+}
+
+.netpan-opt:hover {
+    background-color: rgba(0, 0, 0, 0.1);
+}
+
+/* 保存按钮图标 */
+.netpan-opt-save {
+    color: #4285f4;
+}
+
+/* 删除按钮图标 */
+.netpan-opt-delete {
+    color: #ea4335;
+}
+
+/* 重试按钮图标 */
+.netpan-opt-retry {
+    color: #fbbc05;
+}
+
+.netpan-opt .fa {
+    font-size: 16px;
+}
+
+/* 图标样式 */
+.icon-save::before {
+    font-family: 'FontAwesome';
+    content: "\f0c7";
+    /* fa-floppy-o 保存图标 */
+    font-size: 16px;
+}
+
+.icon-trash::before {
+    font-family: 'FontAwesome';
+    content: "\f1f8";
+    /* fa-trash 垃圾桶图标 */
+    font-size: 16px;
+}
+
+.icon-refresh::before {
+    font-family: 'FontAwesome';
+    content: "\f021";
+    /* fa-refresh 刷新图标 */
+    font-size: 16px;
+}

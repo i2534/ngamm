@@ -58,7 +58,7 @@ func TestGetPanMetadata(t *testing.T) {
 		return
 	}
 	topic := mgr.NewTopic(dir, 0)
-	if m, e := topic.GetPanMetadata(); e != nil {
+	if m, e := topic.ParseTransferRecord(); e != nil {
 		t.Error("Get pan metadata failed:", e)
 	} else {
 		t.Logf("Get pan metadata: %+v", m)

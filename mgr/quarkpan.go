@@ -5,7 +5,6 @@ import (
 	"log"
 	"os"
 	"path/filepath"
-	"regexp"
 	"strings"
 	"sync"
 
@@ -18,9 +17,9 @@ var (
 )
 
 type quarkTask struct {
-	topicId  int
-	url      string
-	unzipPwd string
+	topicId int
+	record  TransferRecord
+	opt     PanOpt
 }
 
 type QuarkCfg struct {
@@ -104,9 +103,24 @@ func (q *QuarkPan) Init() error {
 		go func() {
 			log.Println("QuarkPan: 启动任务处理协程")
 			for task := range q.tasks {
-				if e := q.doTransfer(task); e != nil {
-					log.Println(e.Error())
-					q.holder.Send(e.Error())
+				var e error
+				var status string
+				if task.opt == PAN_OPT_DELETE {
+					dir := q.topicDir(task.topicId)
+					getFids := q.quark.GetFids([]string{dir})
+					if len(getFids) > 0 {
+						toPdirFid := getFids[0]["fid"].(string)
+						q.quark.Delete([]string{toPdirFid})
+					}
+					status = TRANSFER_STATUS_PENDING
+				} else if task.opt == PAN_OPT_SAVE {
+					e = q.doTransfer(task)
+					status = TRANSFER_STATUS_SUCCESS
+				}
+				if e != nil {
+					q.holder.notify(task.topicId, task.record.URL, TRANSFER_STATUS_FAILED, e.Error())
+				} else {
+					q.holder.notify(task.topicId, task.record.URL, status, "")
 				}
 			}
 		}()
@@ -115,8 +129,11 @@ func (q *QuarkPan) Init() error {
 	return nil
 }
 
-func (q QuarkPan) Support(pmd PanMetadata, transferType string) bool {
-	return q.cfg.Transfer == transferType && strings.Contains(pmd.URL, "pan.quark.cn")
+func (q QuarkPan) Support(record TransferRecord) bool {
+	return strings.Contains(record.URL, "pan.quark.cn")
+}
+func (q QuarkPan) TransferType() string {
+	return q.cfg.Transfer
 }
 
 type quarkFile struct {
@@ -125,9 +142,16 @@ type quarkFile struct {
 	size     float64
 }
 
+func (q *QuarkPan) topicDir(topicId int) string {
+	return fmt.Sprintf("%s/%d", q.cfg.Directory, topicId)
+}
+
 func (q *QuarkPan) doTransfer(task quarkTask) error {
 	quark := q.quark
-	url := task.url
+	url := task.record.URL
+	if !strings.Contains(url, "?pwd=") && task.record.Tqm != "" {
+		url = fmt.Sprintf("%s?pwd=%s", url, task.record.Tqm)
+	}
 	log.Printf("QuarkPan: 处理转存任务: %d, %s\n", task.topicId, url)
 	// copy from DoSaveCheck
 	pwdID, passcode, pdirFid := quark.GetIDFromURL(url)
@@ -160,7 +184,7 @@ func (q *QuarkPan) doTransfer(task quarkTask) error {
 	}
 
 	// 获取目标目录FID
-	dir := fmt.Sprintf("%s/%d", q.cfg.Directory, task.topicId)
+	dir := q.topicDir(task.topicId)
 	var toPdirFid string
 
 	getFids := quark.GetFids([]string{dir})
@@ -212,28 +236,38 @@ func (q *QuarkPan) doTransfer(task quarkTask) error {
 	return nil
 }
 
-func (q *QuarkPan) Transfer(topicId int, md PanMetadata) error {
-	uap := md.URL
-	if !strings.Contains(md.URL, "?pwd=") {
-		if md.Tqm == "" {
-			log.Println("QuarkPan: 提取码为空")
-		} else {
-			uap += "?pwd=" + md.Tqm
-		}
-	} else {
-		// 去除字符串末尾所有不为字母数字的字符
-		re := regexp.MustCompile(`[^a-zA-Z0-9]+$`)
-		uap = re.ReplaceAllString(uap, "")
+func (q *QuarkPan) Ls(dir string) (any, error) {
+	quark := q.quark
+	fids := quark.GetFids([]string{dir})
+	if len(fids) == 0 {
+		return nil, fmt.Errorf("QuarkPan: 目录 %s 不存在", dir)
 	}
+	fid := fids[0]["fid"].(string)
+	list := quark.LsDir(fid, 0)
+	return list, nil
+}
 
+func (q *QuarkPan) Transfer(topicId int, record TransferRecord) error {
+	if !strings.Contains(record.URL, "?pwd=") && record.Tqm == "" {
+		log.Println("QuarkPan: 提取码为空")
+	}
 	q.tasks <- quarkTask{
-		topicId:  topicId,
-		url:      uap,
-		unzipPwd: md.Pwd,
+		topicId,
+		record,
+		PAN_OPT_SAVE,
 	}
-
 	return nil
 }
+
+func (q *QuarkPan) Operate(topicId int, record *TransferRecord, opt PanOpt) error {
+	q.tasks <- quarkTask{
+		topicId,
+		*record,
+		opt,
+	}
+	return nil
+}
+
 func (q *QuarkPan) Close() error {
 	if q.tasks != nil {
 		close(q.tasks)
