@@ -338,40 +338,36 @@ func (t *Topic) ParseTransferRecord() ([]*TransferRecord, error) {
 
 	floor := 0
 	pwd := ""
-	var pm *TransferRecord
+	var record *TransferRecord
 	e := t.root.EveryLine(POST_MARKDOWN, func(line string, _ int) bool {
-		nl := strings.TrimSpace(line)
+		line = strings.TrimSpace(line)
 
-		m := panURLRegex.FindStringSubmatch(nl)
+		m := panURLRegex.FindStringSubmatch(line)
 		if len(m) > 1 {
 			url := strings.TrimSpace(m[1])
-
 			// 去除重复的, 因为可能有引用
 			for _, rec := range records {
 				if rec.URL == url {
 					return true
 				}
 			}
-
-			pm = &TransferRecord{
+			record = &TransferRecord{
 				URL: url,
 			}
-			records = append(records, pm)
-
-			m = panTqmRegex.FindStringSubmatch(nl)
-			if len(m) > 1 {
-				tqm := strings.TrimSpace(m[1])
-				if pm != nil {
-					pm.Tqm = tqm
-				}
-			}
-
-			m = panPwdRegex.FindStringSubmatch(nl)
-			if len(m) > 1 {
-				pwd = strings.TrimSpace(m[1])
+			records = append(records, record)
+		}
+		m = panTqmRegex.FindStringSubmatch(line)
+		if len(m) > 1 {
+			tqm := strings.TrimSpace(m[1])
+			if record != nil {
+				record.Tqm = tqm
 			}
 		}
-		if nl == "----" {
+		m = panPwdRegex.FindStringSubmatch(line)
+		if len(m) > 1 {
+			pwd = strings.TrimSpace(m[1])
+		}
+		if line == "----" {
 			floor++
 		}
 		if floor > 3 {
@@ -391,7 +387,7 @@ func (t *Topic) ParseTransferRecord() ([]*TransferRecord, error) {
 }
 
 func (t *Topic) loadPanRecords() ([]*TransferRecord, error) {
-	if cache, has := panTopicCache.Get(t.Id); has {
+	if cache, has := panTopicCache.Get(t.Id); has && cache.topic == t {
 		return cache.records, nil
 	}
 
@@ -433,14 +429,14 @@ func (srv *Server) topicPanRecords() func(c *gin.Context) {
 			return
 		}
 
-		if cache, has := panTopicCache.Get(id); has {
-			c.JSON(http.StatusOK, cache.records)
-			return
-		}
-
 		topic, has := srv.cache.topics.Get(id)
 		if !has {
 			c.JSON(http.StatusNotFound, "未找到帖子")
+			return
+		}
+
+		if cache, has := panTopicCache.Get(id); has && cache.topic == topic {
+			c.JSON(http.StatusOK, cache.records)
 			return
 		}
 

@@ -247,7 +247,6 @@ func (srv *Server) deleteTopic(id int) bool {
 
 	topic, has := cache.topics.Get(id)
 	if !has {
-
 		return false
 	}
 

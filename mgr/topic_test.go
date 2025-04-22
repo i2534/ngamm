@@ -51,7 +51,21 @@ func TestIsUID(t *testing.T) {
 	}
 }
 
-func TestGetPanMetadata(t *testing.T) {
+func TestParseTransferRecord(t *testing.T) {
+	dir, e := mgr.OpenRoot("../data/43894008")
+	if e != nil {
+		t.Error("Open root failed:", e)
+		return
+	}
+	topic := mgr.NewTopic(dir, 0)
+	if m, e := topic.ParseTransferRecord(); e != nil {
+		t.Error("Get pan metadata failed:", e)
+	} else {
+		t.Logf("Get pan metadata: %+v", m)
+	}
+}
+
+func TestParseTransferRecord2(t *testing.T) {
 	dir, e := mgr.OpenRoot("../data/43832556")
 	if e != nil {
 		t.Error("Open root failed:", e)
