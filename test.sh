@@ -13,7 +13,10 @@ main() {
             ;;
         go)
             # go run . -m data/ngapost2md -n data/pan
-            go run . -m data/ngapost2md -l simple
+            # go run . -m data/ngapost2md -l simple
+            # export LOG="simple"
+            export TOKEN="abc"
+            go run . -m data/ngapost2md
             ;;
         log)
             git log --pretty=format:"- %ad (%h): %s " --date=format-local:'%Y-%m-%d %H:%M' > CHANGELOG.md

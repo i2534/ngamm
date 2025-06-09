@@ -52,6 +52,8 @@ COPY entrypoint.sh .
 # ENV TOKEN=""
 # 帖子单独存放路径, 可以是绝对地址或相对地址(相对于 ngapost2md)
 # ENV TOPIC_ROOT=""
+# 设置日志输出分组
+# ENV LOG=""
 # 赋予脚本执行权限并执行脚本
 RUN chmod +x entrypoint.sh && sh entrypoint.sh prepare
 # 挂载文件夹

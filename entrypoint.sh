@@ -81,11 +81,7 @@ start_application() {
     chmod +x ngamm
 
     export GIN_MODE=release
-    local CMD="./ngamm"
-    if [ -n "${TOKEN:-}" ]; then
-        CMD="$CMD -t ${TOKEN}"
-    fi
-    CMD="$CMD -p 5842 -m $dir_data/ngapost2md"
+    local CMD="./ngamm -p 5842 -m $dir_data/ngapost2md"
     if [ "$NET_PAN" = "true" ]; then
         mkdir -p "$dir_pan"
         # 用户可能会在外部修改配置文件
