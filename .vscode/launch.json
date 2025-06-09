@@ -13,8 +13,10 @@
             "args": [
                 "-m",
                 "data/ngapost2md",
-                "-n",
-                "data/pan"
+                // "-n",
+                // "data/pan"
+                "-l",
+                "*"
             ]
         }
     ]

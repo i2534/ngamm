@@ -114,6 +114,10 @@ chmod +x ngamm
 
 `port` 默认为 `5842`
 
+## 小工具
+### 解压
+[Linux 自动解压](./assets/unzip.sh)
+
 ## UI 和 功能
 Home 页面:
 ![Home 截图](./assets/ui_home.png)

@@ -2,7 +2,6 @@ package mgr
 
 import (
 	"encoding/json"
-	"log"
 	"os"
 	"regexp"
 	"strconv"
@@ -10,8 +9,13 @@ import (
 	"sync"
 	"time"
 
+	"github.com/i2534/ngamm/mgr/log"
 	"github.com/robfig/cron/v3"
 	"gopkg.in/ini.v1"
+)
+
+var (
+	groupTopic = log.GROUP_TOPIC
 )
 
 type Metadata struct {
@@ -82,7 +86,7 @@ func (topic *Topic) parse(nga *Client) error {
 			if m != nil {
 				t, e := time.Parse("2006-01-02 15:04:05", m[1])
 				if e != nil {
-					log.Println("解析时间失败:", m[1], e)
+					log.Group(groupTopic).Println("解析时间失败:", m[1], e)
 					return false
 				}
 
@@ -97,7 +101,7 @@ func (topic *Topic) parse(nga *Client) error {
 					if val != "" {
 						uid, e := strconv.Atoi(val)
 						if e != nil {
-							log.Println("解析用户 ID 失败:", val, e)
+							log.Group(groupTopic).Println("解析用户 ID 失败:", val, e)
 						} else {
 							topic.Uid = uid
 						}
@@ -107,7 +111,7 @@ func (topic *Topic) parse(nga *Client) error {
 				if topic.Uid == 0 { // 1.6.0 及之前的版本没有 UID
 					go func() {
 						if u, e := nga.GetUser(topic.Author); e != nil {
-							log.Println("获取用户信息失败:", topic.Author, e)
+							log.Group(groupTopic).Println("获取用户信息失败:", topic.Author, e)
 						} else {
 							topic.Author = u.Name
 							topic.Uid = u.Id
@@ -118,11 +122,11 @@ func (topic *Topic) parse(nga *Client) error {
 					if m != nil {
 						uid, e := strconv.Atoi(m[1])
 						if e != nil {
-							log.Println("解析用户 ID 失败:", m[1], e)
+							log.Group(groupTopic).Println("解析用户 ID 失败:", m[1], e)
 						} else {
 							go func() {
 								if u, e := nga.GetUserById(uid); e != nil {
-									log.Println("获取用户信息失败:", topic.Author, e)
+									log.Group(groupTopic).Println("获取用户信息失败:", topic.Author, e)
 								} else {
 									topic.Author = u.Name
 									topic.Uid = u.Id
@@ -145,22 +149,22 @@ func LoadTopic(root *ExtRoot, id int, nga *Client) (*Topic, error) {
 		return nil, e
 	}
 
-	log.Printf("从 %s 加载帖子\n", dir.Name())
+	log.Group(groupTopic).Printf("从 %s 加载帖子\n", dir.Name())
 
 	topic := NewTopic(dir, id)
 
 	if dir.IsExist(POST_MARKDOWN) {
 		if e := topic.parse(nga); e != nil {
-			log.Printf("解析帖子 %d 失败: %s", id, e)
+			log.Group(groupTopic).Printf("解析帖子 %d 失败: %s", id, e)
 			return nil, e
 		}
 		if topic.Title == "" {
-			log.Printf("帖子 %d 中未找到标题", id)
+			log.Group(groupTopic).Printf("帖子 %d 中未找到标题", id)
 		} else {
-			log.Printf("成功加载帖子 %d : <%s>", id, topic.Title)
+			log.Group(groupTopic).Printf("成功加载帖子 %d : <%s>", id, topic.Title)
 		}
 	} else {
-		log.Printf("在目录 %s 中未找到 %s", dir.Name(), POST_MARKDOWN)
+		log.Group(groupTopic).Printf("在目录 %s 中未找到 %s", dir.Name(), POST_MARKDOWN)
 	}
 
 	pd, e := dir.ReadAll(PROCESS_INI)
@@ -178,10 +182,10 @@ func LoadTopic(root *ExtRoot, id int, nga *Client) (*Topic, error) {
 	jd, e := dir.ReadAll(METADATA_JSON)
 	if e != nil {
 		if !os.IsNotExist(e) {
-			log.Println("读取帖子元数据失败:", e)
+			log.Group(groupTopic).Println("读取帖子元数据失败:", e)
 		}
 	} else if e := json.Unmarshal(jd, md); e != nil {
-		log.Println("解析帖子元数据失败:", e)
+		log.Group(groupTopic).Println("解析帖子元数据失败:", e)
 	}
 	topic.Metadata = md
 

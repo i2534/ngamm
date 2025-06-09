@@ -3,13 +3,14 @@ package mgr
 import (
 	"bytes"
 	"fmt"
-	"log"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"regexp"
 	"strings"
 	"sync"
+
+	"github.com/i2534/ngamm/mgr/log"
 
 	"github.com/robfig/cron/v3"
 	"gopkg.in/ini.v1"
@@ -185,14 +186,14 @@ func (b *Baidu) safeCd(dir string) error {
 		if v, e := b.execute("mkdir", dir); e != nil {
 			return fmt.Errorf("BaiduPan: mkdir %s 出现问题: %s", dir, e.Error())
 		} else {
-			log.Printf("BaiduPan: mkdir %s\n", v)
+			log.Group(groupPan).Printf("BaiduPan: mkdir %s\n", v)
 		}
 	}
 
 	if v, e := b.execute("cd", dir); e != nil {
 		return fmt.Errorf("BaiduPan: cd %s 出现问题: %s", dir, e.Error())
 	} else {
-		log.Printf("BaiduPan: cd %s , %s\n", dir, v)
+		log.Group(groupPan).Printf("BaiduPan: cd %s , %s\n", dir, v)
 	}
 
 	// https://github.com/qjfoidnh/BaiduPCS-Go/blob/main/main.go#pwd
@@ -271,7 +272,7 @@ func (b *Baidu) del(dir string) error {
 	if v, e := b.execute("rm", dir); e != nil {
 		return fmt.Errorf("BaiduPan: rm %s 出现问题: %s", dir, e.Error())
 	} else {
-		log.Printf("BaiduPan: rm %s , %s\n", dir, v)
+		log.Group(groupPan).Printf("BaiduPan: rm %s , %s\n", dir, v)
 	}
 	return nil
 }
@@ -286,7 +287,7 @@ func (b *Baidu) doTransfer(task baiduTask) error {
 	if !strings.Contains(url, "?pwd=") {
 		url = fmt.Sprintf("%s?pwd=%s", url, task.record.Tqm)
 	}
-	log.Printf("BaiduPan: 处理转存任务: %d, %s\n", task.topicId, url)
+	log.Group(groupPan).Printf("BaiduPan: 处理转存任务: %d, %s\n", task.topicId, url)
 	dir := b.topicDir(task.topicId)
 
 	if e := b.safeCd(dir); e != nil {
@@ -299,7 +300,7 @@ func (b *Baidu) doTransfer(task baiduTask) error {
 		return fmt.Errorf("BaiduPan: transfer %s 出现问题: %s", url, e.Error())
 	} else {
 		if strings.Contains(v, "成功") {
-			log.Printf("BaiduPan: transfer %s 成功, %s\n", url, v)
+			log.Group(groupPan).Printf("BaiduPan: transfer %s 成功, %s\n", url, v)
 		} else {
 			log.Printf("BaiduPan: transfer %s 失败, %s\n", url, v)
 			b.safeDelete(dir)
@@ -320,7 +321,7 @@ func (b *Baidu) doTransfer(task baiduTask) error {
 		}
 	}
 
-	log.Printf("BaiduPan: 处理转存任务完成: %d, %s\n", task.topicId, url)
+	log.Group(groupPan).Printf("BaiduPan: 处理转存任务完成: %d, %s\n", task.topicId, url)
 	return nil
 }
 
@@ -417,7 +418,7 @@ func (b *Baidu) upload(file, dir string) error {
 	if v, e := b.execute("upload", file, dir); e != nil {
 		return fmt.Errorf("BaiduPan: upload %s 出现问题: %s", file, e.Error())
 	} else {
-		log.Printf("BaiduPan: upload %s 输出: %s\n", file, v)
+		log.Group(groupPan).Printf("BaiduPan: upload %s 输出: %s\n", file, v)
 	}
 	return nil
 }
@@ -436,7 +437,7 @@ func (b *Baidu) update() error {
 	if e != nil {
 		return fmt.Errorf("BaiduPan: update 出现问题: %s", e.Error())
 	}
-	log.Printf("BaiduPan: update 输出: %s\n", out)
+	log.Group(groupPan).Printf("BaiduPan: update 输出: %s\n", out)
 	return nil
 }
 

@@ -403,3 +403,10 @@ func CopyFile(src, dst string) error {
 
 	return nil
 }
+
+func CopyValue[T any](tar *T, val T) {
+	if tar == nil {
+		return
+	}
+	*tar = val
+}

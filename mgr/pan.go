@@ -5,12 +5,13 @@ import (
 	"fmt"
 	"html"
 	"io"
-	"log"
 	"net/http"
 	"path/filepath"
 	"regexp"
 	"strconv"
 	"strings"
+
+	"github.com/i2534/ngamm/mgr/log"
 
 	"github.com/gin-gonic/gin"
 	"gopkg.in/ini.v1"
@@ -38,6 +39,8 @@ var (
 	panURLRegex *regexp.Regexp = regexp.MustCompile(`\((https://pan\..+)\)`)
 	panTqmRegex *regexp.Regexp = regexp.MustCompile(`提取码[：:\s]*([a-zA-Z0-9]{4})`)
 	panPwdRegex *regexp.Regexp = regexp.MustCompile(`解压密?码[：:\s统一为]*(.+)`)
+
+	groupPan = log.GROUP_PAN
 )
 
 // 网盘
@@ -528,13 +531,13 @@ func (srv *Server) topicPanOperate() func(c *gin.Context) {
 		var opt PanOpt
 		switch form.Opt {
 		case "save":
-			log.Println("保存网盘记录:", record.URL)
+			log.Group(groupPan).Println("保存网盘记录:", record.URL)
 			opt = PAN_OPT_SAVE
 		case "delete":
-			log.Println("删除网盘记录:", record.URL)
+			log.Group(groupPan).Println("删除网盘记录:", record.URL)
 			opt = PAN_OPT_DELETE
 		case "retry":
-			log.Println("重试网盘记录:", record.URL)
+			log.Group(groupPan).Println("重试网盘记录:", record.URL)
 			opt = PAN_OPT_SAVE
 		}
 		if opt == 0 {

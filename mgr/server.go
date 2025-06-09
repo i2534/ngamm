@@ -3,7 +3,7 @@ package mgr
 import (
 	"context"
 	"fmt"
-	"log"
+	gl "log"
 	"math/rand/v2"
 	"net/http"
 	"os"
@@ -12,6 +12,8 @@ import (
 	"strconv"
 	"sync"
 	"time"
+
+	"github.com/i2534/ngamm/mgr/log"
 
 	"github.com/gin-gonic/gin"
 	"github.com/robfig/cron/v3"
@@ -30,6 +32,7 @@ var (
 	AUTHOR_ID         = 0
 	DELETE_TIME       = 7 * 24
 	TIME_LOC          = Local()
+	groupGin          = log.GROUP_GIN
 )
 
 type SrvCfg struct {
@@ -42,7 +45,6 @@ type SrvCfg struct {
 type cache struct {
 	lock      *sync.RWMutex
 	topicRoot *ExtRoot
-	loaded    bool                  // topics already loaded
 	topics    *SyncMap[int, *Topic] // all topics
 	queue     chan int              // adding or update topic id
 	smile     *Smile
@@ -64,11 +66,10 @@ type Server struct {
 	Raw      *http.Server
 	Cfg      *SrvCfg
 	nga      *Client
-	stopped  bool
-	stopChan chan struct{}
-	stopLock *sync.Mutex
 	cache    *cache
 	cron     *cron.Cron
+	stopChan chan struct{}
+	stopOnce sync.Once
 }
 
 func customLogFormatter(param gin.LogFormatterParams) string {
@@ -95,13 +96,13 @@ func customLogFormatter(param gin.LogFormatterParams) string {
 }
 
 func formatTimestamp(timestamp time.Time) string {
-	flags := log.Flags()
+	flags := gl.Flags()
 	switch {
-	case flags&log.Ldate != 0 && flags&log.Ltime != 0:
+	case flags&gl.Ldate != 0 && flags&gl.Ltime != 0:
 		return timestamp.Format("2006/01/02 15:04:05 ")
-	case flags&log.Ldate != 0:
+	case flags&gl.Ldate != 0:
 		return timestamp.Format("2006/01/02 ")
-	case flags&log.Ltime != 0:
+	case flags&gl.Ltime != 0:
 		return timestamp.Format("15:04:05 ")
 	default:
 		return ""
@@ -115,7 +116,12 @@ func NewServer(cfg *SrvCfg, nga *Client) (*Server, error) {
 	}
 
 	engine := gin.New()
-	engine.Use(gin.LoggerWithFormatter(customLogFormatter), gin.Recovery())
+	middlewares := make([]gin.HandlerFunc, 0, 2)
+	middlewares = append(middlewares, gin.Recovery())
+	if log.IsLog(groupGin) {
+		middlewares = append(middlewares, gin.LoggerWithFormatter(customLogFormatter))
+	}
+	engine.Use(middlewares...)
 
 	srv := &Server{
 		Raw: &http.Server{
@@ -125,7 +131,7 @@ func NewServer(cfg *SrvCfg, nga *Client) (*Server, error) {
 		Cfg:      cfg,
 		nga:      nga,
 		stopChan: make(chan struct{}),
-		stopLock: &sync.Mutex{},
+		stopOnce: sync.Once{},
 		cron:     cron.New(cron.WithLocation(TIME_LOC)),
 		cache: &cache{
 			lock:      &sync.RWMutex{},
@@ -156,9 +162,6 @@ func (srv *Server) loadTopics() {
 	cache := srv.cache
 	cache.lock.Lock()
 	defer cache.lock.Unlock()
-	if cache.loaded {
-		return
-	}
 
 	files, e := cache.topicRoot.ReadDir()
 	if e != nil {
@@ -185,7 +188,7 @@ func (srv *Server) loadTopics() {
 			cache.topics.Put(id, topic)
 
 			if topic.Metadata.Abandon {
-				log.Printf("帖子 %d 已放弃更新\n", id)
+				log.Group(groupTopic).Printf("帖子 %d 已放弃更新\n", id)
 				continue
 			}
 
@@ -195,9 +198,9 @@ func (srv *Server) loadTopics() {
 				d := time.Until(next)
 				if d > time.Minute*30 {
 					d = time.Duration(rand.Int64N(int64(d) / 2))
-					log.Printf("随机更新帖子 <%s> 在 %s 后\n", topic.Title, d)
+					log.Group(groupTopic).Printf("随机更新帖子 <%s> 在 %s 后\n", topic.Title, d)
 					timer := time.AfterFunc(d, func() {
-						log.Println("随机更新帖子", topic.Title)
+						log.Group(groupTopic).Println("随机更新帖子", topic.Title)
 						cache.queue <- id
 						topic.timers.Delete(d)
 					})
@@ -205,10 +208,8 @@ func (srv *Server) loadTopics() {
 				}
 			}
 		}
-
 		log.Println("已加载", cache.topics.Size(), "个帖子")
 	}
-	cache.loaded = true
 }
 
 func (srv *Server) checkRecycleBin() {
@@ -253,12 +254,12 @@ func (srv *Server) addCron(topic *Topic) time.Time {
 	uc := md.UpdateCron
 	if uc != "" {
 		if topic.Title == "" {
-			log.Printf("为帖子 %d 添加定时任务: %s\n", topic.Id, uc)
+			log.Group(groupTopic).Printf("为帖子 %d 添加定时任务: %s\n", topic.Id, uc)
 		} else {
-			log.Printf("为帖子 <%s> 添加定时任务: %s\n", topic.Title, uc)
+			log.Group(groupTopic).Printf("为帖子 <%s> 添加定时任务: %s\n", topic.Title, uc)
 		}
 		id, e := srv.cron.AddFunc(uc, func() {
-			log.Println("为帖子添加处理任务", topic.Id)
+			log.Group(groupTopic).Println("为帖子添加处理任务", topic.Id)
 			srv.cache.queue <- topic.Id
 		})
 		if e != nil {
@@ -278,7 +279,7 @@ func (srv *Server) addCron(topic *Topic) time.Time {
 func (srv *Server) process() {
 	cache := srv.cache
 	for id := range cache.queue {
-		log.Println("处理帖子", id)
+		log.Group(groupTopic).Println("处理帖子", id)
 
 		old, has := cache.topics.Get(id)
 		if !has {
@@ -287,9 +288,9 @@ func (srv *Server) process() {
 		}
 
 		if old.Title == "" {
-			log.Printf("更新帖子 %d\n", id)
+			log.Group(groupTopic).Printf("更新帖子 %d\n", id)
 		} else {
-			log.Printf("更新帖子 %d <%s>\n", id, old.Title)
+			log.Group(groupTopic).Printf("更新帖子 %d <%s>\n", id, old.Title)
 		}
 
 		// 先检查 process.ini, assets.json 存在与否, 如果文件夹存在但文件不存在, ngapost2md 会认为其是无效的帖子, 不予更新
@@ -420,19 +421,13 @@ func (srv *Server) Run() {
 func (srv *Server) Stop() {
 	log.Println("正在停止服务器...")
 
-	srv.stopLock.Lock()
-	defer srv.stopLock.Unlock()
+	srv.stopOnce.Do(func() {
+		srv.cron.Stop()
+		srv.cache.Close()
+		srv.nga.Close()
 
-	if srv.stopped {
-		return
-	}
-	srv.stopped = true
-
-	srv.cron.Stop()
-	srv.cache.Close()
-	srv.nga.Close()
-
-	close(srv.stopChan)
+		close(srv.stopChan)
+	})
 
 	log.Println("服务器已停止")
 }

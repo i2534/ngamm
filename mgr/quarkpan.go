@@ -2,11 +2,12 @@ package mgr
 
 import (
 	"fmt"
-	"log"
 	"os"
 	"path/filepath"
 	"strings"
 	"sync"
+
+	"github.com/i2534/ngamm/mgr/log"
 
 	"gopkg.in/ini.v1"
 )
@@ -152,7 +153,7 @@ func (q *QuarkPan) doTransfer(task quarkTask) error {
 	if !strings.Contains(url, "?pwd=") && task.record.Tqm != "" {
 		url = fmt.Sprintf("%s?pwd=%s", url, task.record.Tqm)
 	}
-	log.Printf("QuarkPan: 处理转存任务: %d, %s\n", task.topicId, url)
+	log.Group(groupPan).Printf("QuarkPan: 处理转存任务: %d, %s\n", task.topicId, url)
 	// copy from DoSaveCheck
 	pwdID, passcode, pdirFid := quark.GetIDFromURL(url)
 	isSharing, stoken := quark.GetStoken(pwdID, passcode)
@@ -170,7 +171,7 @@ func (q *QuarkPan) doTransfer(task quarkTask) error {
 		ban := fileMap["ban"].(bool)
 		name := fileMap["file_name"].(string)
 		if ban {
-			log.Printf("QuarkPan: 文件 %s 被 Ban, 跳过", name)
+			log.Group(groupPan).Printf("QuarkPan: 文件 %s 被 Ban, 跳过", name)
 			continue
 		}
 		fs[name] = quarkFile{
@@ -204,7 +205,7 @@ func (q *QuarkPan) doTransfer(task quarkTask) error {
 		fileName := file["file_name"].(string)
 		if f, ok := fs[fileName]; ok {
 			if f.size == file["size"].(float64) {
-				log.Printf("QuarkPan: 文件 %s 已存在, 跳过", fileName)
+				log.Group(groupPan).Printf("QuarkPan: 文件 %s 已存在, 跳过", fileName)
 				delete(fs, fileName)
 			}
 		}
@@ -224,7 +225,7 @@ func (q *QuarkPan) doTransfer(task quarkTask) error {
 	if saveFile["code"].(float64) != 0 {
 		if len(dirFileList) == 0 { // 保存前为空目录, 保存又失败, 再次判断目录是否为空
 			if dirFileList = quark.LsDir(toPdirFid, 0); len(dirFileList) == 0 {
-				log.Printf("QuarkPan: 目录 %s 为空, 删除", dir)
+				log.Group(groupPan).Printf("QuarkPan: 目录 %s 为空, 删除", dir)
 				// 删除目录
 				quark.Delete([]string{toPdirFid})
 			}
@@ -232,7 +233,7 @@ func (q *QuarkPan) doTransfer(task quarkTask) error {
 		return fmt.Errorf("QuarkPan: 保存文件失败, %s", saveFile["message"].(string))
 	}
 
-	log.Printf("QuarkPan: 处理转存任务完成: %d, %s\n", task.topicId, url)
+	log.Group(groupPan).Printf("QuarkPan: 处理转存任务完成: %d, %s\n", task.topicId, url)
 	return nil
 }
 

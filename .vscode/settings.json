@@ -1,0 +1,9 @@
+{
+    "go": {
+        "testFlags": [
+            "-v",
+            "-count=1",
+            "-timeout=2m"
+        ],
+    }
+}

@@ -12,7 +12,8 @@ main() {
             docker run -it --rm --name ngamm-pan  -v ./data:/app/data ngamm-pan:1.0 sh
             ;;
         go)
-            go run . -m data/ngapost2md -n data/pan
+            # go run . -m data/ngapost2md -n data/pan
+            go run . -m data/ngapost2md -l simple
             ;;
         log)
             git log --pretty=format:"- %ad (%h): %s " --date=format-local:'%Y-%m-%d %H:%M' > CHANGELOG.md

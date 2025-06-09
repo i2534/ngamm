@@ -6,7 +6,6 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"log"
 	"math/rand"
 	"net/http"
 	"os/exec"
@@ -17,6 +16,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/i2534/ngamm/mgr/log"
 	"github.com/robfig/cron/v3"
 	"gopkg.in/ini.v1"
 )
@@ -24,6 +24,10 @@ import (
 const (
 	NGA_CFG  = "config.ini"
 	USER_DIR = "users"
+)
+
+var (
+	groupNGA = log.GROUP_NGA
 )
 
 type User struct {
@@ -333,7 +337,7 @@ func (c *Client) DownTopic(tid int) (bool, string) {
 	if e != nil {
 		log.Printf("下载帖子 %d 出现问题: %s\n", tid, e.Error())
 	} else {
-		log.Printf("\n%s", out)
+		log.Group(groupNGA).Printf("\n%s", out)
 
 		lines := strings.Split(out, "\n")
 		for i := len(lines) - 1; i >= 0; i-- {
@@ -342,7 +346,7 @@ func (c *Client) DownTopic(tid int) (bool, string) {
 				continue
 			}
 			if strings.Contains(line, "任务结束") {
-				log.Printf("下载帖子 %d 完成\n", tid)
+				log.Group(groupNGA).Printf("下载帖子 %d 完成\n", tid)
 				return true, ""
 			}
 			i := strings.Index(line, "返回代码不为")
@@ -371,7 +375,7 @@ func (c *Client) execute(args []string, dir string) (string, error) {
 	cmd.Stderr = &out
 	if e := cmd.Run(); e != nil {
 		if e, ok := e.(*exec.ExitError); ok {
-			log.Printf("命令执行返回非零退出状态: %s\n", e)
+			log.Group(groupNGA).Printf("命令执行返回非零退出状态: %s\n", e)
 			return strings.TrimSpace(out.String()), nil
 		}
 		return strings.TrimSpace(out.String()), e
@@ -387,7 +391,7 @@ func (c *Client) getHTML(url string) (string, error) {
 	req.Header.Set("User-Agent", c.GetUA())
 	req.Header.Set("Cookie", "ngaPassportUid="+c.uid+"; ngaPassportCid="+c.cid)
 
-	log.Printf("请求 %s\n", url)
+	log.Group(groupNGA).Printf("请求 %s\n", url)
 
 	resp, e := DoHttp(req)
 	if e != nil {
@@ -583,11 +587,11 @@ func (c *Client) doSubscribe(user *User) error {
 				return
 			}
 
-			log.Printf("获取用户 %s[%d] 新的帖子数量: %d\n", user.Name, user.Id, len(newest))
+			log.Group(groupNGA).Printf("获取用户 %s[%d] 新的帖子数量: %d\n", user.Name, user.Id, len(newest))
 
 			for _, topic := range newest {
 				if topic.Miss {
-					log.Printf("帖子 %d 已无法访问\n", topic.Id)
+					log.Group(groupNGA).Printf("帖子 %d 已无法访问\n", topic.Id)
 					continue
 				}
 
@@ -616,7 +620,7 @@ func (c *Client) doSubscribe(user *User) error {
 						}
 					}
 					if !matched {
-						log.Printf("帖子 %d 主题 <%s> 不匹配过滤条件\n", topic.Id, topic.Title)
+						log.Group(groupNGA).Printf("帖子 %d 主题 <%s> 不匹配过滤条件\n", topic.Id, topic.Title)
 						continue
 					}
 				}
