@@ -2,6 +2,7 @@ function render(ngaBase, id, token, content) {
     const origin = window.location.origin;
     const baseUrl = `${origin}/view/${token}/${id}/`;
     const ngaPostBase = `${ngaBase}/read.php?tid=`;
+    const ngaAttachBase = `https://img.nga.178.com/attachments/`;
     marked.use(markedBaseUrl.baseUrl(baseUrl));
 
     const urlParams = new URLSearchParams(window.location.search);
@@ -12,7 +13,7 @@ function render(ngaBase, id, token, content) {
     const renderer = {
         heading({ tokens, depth }) {
             const text = this.parser.parseInline(tokens);
-            if (depth === 3) {
+            if (depth === 3) {// 标题
                 return `<h${depth}><a href="${ngaPostBase}${id}" target="_blank">${text}</a></h${depth}>`;
             }
             if (depth === 5) {// 楼层
@@ -61,7 +62,7 @@ function render(ngaBase, id, token, content) {
         if (name !== '') {// 强制将链接到 NGA 的表情图片转换到本服务器
             return `${origin}/view/${token}/smile/${name}`;
         }
-        return src;
+        return makeAttachSrc(src);
     }
     function makeMedia(src, name, title, poster) {
         const ext = name.split('.').pop().toLowerCase();
@@ -181,12 +182,21 @@ function render(ngaBase, id, token, content) {
     function escape(src) {// 转义, 不用 %2F 是因为使用代理服务器时会被提前解码为 / 导致 404
         return encodeURIComponent(src).replaceAll('%2F', '_2F');
     }
+    function makeAttachSrc(src, floor) {
+        if (!src.startsWith(ngaAttachBase)) {
+            return src;
+        }
+        if (floor === undefined || floor === null) {
+            floor = '-1';
+        }
+        return `${baseUrl}at_${floor}_${escape(src)}`;
+    }
     function tryReloadVideo(video) {
         video.onerror = null; // 防止进入无限循环
 
         const floor = findFloor(video);
-        video.poster = `${baseUrl}at_${floor}_${escape(video.poster)}`;
-        video.src = `${baseUrl}at_${floor}_${escape(video.src)}`;
+        video.poster = makeAttachSrc(video.poster, floor);
+        video.src = makeAttachSrc(video.src, floor);
     }
     // 修正引用, > 会被处理成 blockquote, 但 [quote] 需要自行处理
     function fixQuote(html) {
@@ -198,7 +208,7 @@ function render(ngaBase, id, token, content) {
         return html.replace(/\[attach\](.*?)\[\/attach\]/g, (_, m1) => {
             let src = m1.trim();
             if (m1.startsWith('./')) {
-                src = 'https://img.nga.178.com/attachments/' + src.substring(2);
+                src = ngaAttachBase + src.substring(2);
             }
             const url = new URL(src);
             return makeMedia(src, url.pathname);
@@ -334,7 +344,7 @@ function render(ngaBase, id, token, content) {
                     if (rect.width > 0 && rect.height > 0) {
                         [attrSrc, attrPoster].forEach(n => {
                             if (tar.hasAttribute(n)) {
-                                tar.setAttribute(n.substring(1), tar.getAttribute(n));
+                                tar.setAttribute(n.substring(1), fixSrc(tar.getAttribute(n)));
                                 tar.removeAttribute(n);
                             }
                         });

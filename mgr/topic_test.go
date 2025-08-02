@@ -88,3 +88,23 @@ func TestTryTransfer(t *testing.T) {
 	topic := mgr.NewTopic(dir, 0)
 	topic.AutoTransfer(nil)
 }
+
+func TestTryFixAssets(t *testing.T) {
+	dir, e := mgr.OpenRoot("../data/np2md/44738841")
+	if e != nil {
+		t.Error("Open root failed:", e)
+		return
+	}
+	topic := mgr.NewTopic(dir, 0)
+	topic.TryFixAssets(nil)
+}
+
+func TestTryFetchAssets(t *testing.T) {
+	dir, e := mgr.OpenRoot("../data/np2md/44741657.0")
+	if e != nil {
+		t.Error("Open root failed:", e)
+		return
+	}
+	topic := mgr.NewTopic(dir, 44741657)
+	topic.TryFetchAssets(nil)
+}

@@ -3,6 +3,7 @@ package mgr
 import (
 	"bufio"
 	"compress/gzip"
+	"context"
 	"crypto/sha1"
 	"encoding/json"
 	"fmt"
@@ -323,15 +324,39 @@ func DoHttp(req *http.Request) (*http.Response, error) {
 	return hc.Do(req)
 }
 
-func BodyReader(resp *http.Response) (io.ReadCloser, error) {
+type ResponseReader struct {
+	io.ReadCloser
+	Header http.Header
+	cancel context.CancelFunc
+}
+
+func (r *ResponseReader) Close() error {
+	if r.cancel != nil {
+		r.cancel()
+	}
+	if r.ReadCloser != nil {
+		return r.ReadCloser.Close()
+	}
+	return nil
+}
+
+func BodyReader(resp *http.Response) (*ResponseReader, error) {
 	reader := resp.Body
 	if strings.Contains(resp.Header.Get("Content-Encoding"), "gzip") {
 		gzr, e := gzip.NewReader(resp.Body)
 		if e != nil {
-			return reader, e
+			return &ResponseReader{ReadCloser: resp.Body, Header: resp.Header}, e
 		}
 		reader = gzr
 	}
+	return &ResponseReader{ReadCloser: reader, Header: resp.Header}, nil
+}
+func BodyReaderWithCancel(resp *http.Response, cancel context.CancelFunc) (*ResponseReader, error) {
+	reader, e := BodyReader(resp)
+	if e != nil {
+		return nil, e
+	}
+	reader.cancel = cancel
 	return reader, nil
 }
 
@@ -409,4 +434,18 @@ func CopyValue[T any](tar *T, val T) {
 		return
 	}
 	*tar = val
+}
+
+func IsVaildImage(data []byte) bool {
+	if len(data) < 12 {
+		return false
+	}
+	buf := data
+	if len(data) > 1024 {
+		buf = data[:1024]
+	}
+	if strings.HasPrefix(string(buf), "<!DOCTYPE html>") {
+		return false
+	}
+	return true
 }

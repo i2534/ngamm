@@ -328,6 +328,8 @@ max_floor = -1`
 				if cache.pans != nil {
 					go topic.AutoTransfer(cache.pans)
 				}
+
+				go topic.TryFixAssets(srv.nga)
 			}
 		} else {
 			if topic, has := cache.topics.Get(id); has {

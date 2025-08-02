@@ -383,8 +383,8 @@ func (srv *Server) viewTopicRes() func(c *gin.Context) {
 		}
 
 		if strings.HasPrefix(name, "at_") { // load attachment failed from NGA
-			log.Println(name, "是附件")
-			srv.replayAttachment(c, name[3:], topic)
+			// log.Println(name, "是附件")
+			srv.replyAttachment(c, name[3:], topic)
 			return
 		}
 
@@ -399,67 +399,73 @@ func (srv *Server) viewTopicRes() func(c *gin.Context) {
 	}
 }
 
-func (srv *Server) replayAttachment(c *gin.Context, name string, topic *Topic) {
+func (srv *Server) replyAttachment(c *gin.Context, name string, topic *Topic) {
 	i := strings.IndexByte(name, '_')
-	if i < 0 {
-		c.JSON(http.StatusBadRequest, "无效的附件名，缺少楼层")
-		return
-	}
-
 	src, e := url.QueryUnescape(strings.ReplaceAll(name[i+1:], "_2F", "%2F"))
 	if e != nil {
 		c.JSON(http.StatusBadRequest, "无效的附件名，解码失败")
 		return
 	}
-	log.Println("附件来源", src)
-	fn := name[:i] + "_" + ShortSha1(src) + filepath.Ext(src)
-	fp := filepath.Join(ATTACH_DIR, fn)
-	if topic.root.IsExist(fp) {
-		f, e := topic.root.OpenReader(fp)
+	// log.Println("附件来源:", src)
+	baseName := ShortSha1(src) + filepath.Ext(src)
+	// log.Println("附件文件名:", baseName)
+	// 兼容旧版本
+	floor := name[:i]
+	if floor != "-1" {
+		nameWithFloor := floor + "_" + baseName
+		nwfp := filepath.Join(ATTACH_DIR, nameWithFloor)
+		if topic.root.IsExist(nwfp) {
+			f, e := topic.root.OpenReader(nwfp)
+			if e != nil {
+				c.JSON(http.StatusInternalServerError, "打开附件文件失败")
+				return
+			}
+			defer f.Close()
+
+			log.Println("命中附件缓存", nameWithFloor)
+
+			c.DataFromReader(http.StatusOK, FileSize(f), ContentType(nameWithFloor), f, nil)
+			return
+		}
+	}
+
+	// 新版本直接使用 baseName
+	nfp := filepath.Join(ATTACH_DIR, baseName)
+	if topic.root.IsExist(nfp) {
+		f, e := topic.root.OpenReader(nfp)
 		if e != nil {
 			c.JSON(http.StatusInternalServerError, "打开附件文件失败")
 			return
 		}
 		defer f.Close()
-
-		log.Println("命中附件缓存", fn)
-
-		c.DataFromReader(http.StatusOK, FileSize(f), ContentType(fn), f, nil)
+		log.Println("命中附件缓存", baseName)
+		c.DataFromReader(http.StatusOK, FileSize(f), ContentType(baseName), f, nil)
 		return
 	}
 
-	if strings.Contains(src, ".nga.178.com/attachments/") {
-		log.Println("获取附件", src)
-		req, e := http.NewRequest(http.MethodGet, src, nil)
+	// 如果是 NGA 的附件, 则直接下载
+	if strings.HasPrefix(src, ATTACHMENT_BASE) {
+		reader, e := srv.nga.GetAttachment(src)
 		if e != nil {
-			c.JSON(http.StatusInternalServerError, "无效的附件名，创建请求失败")
+			log.Println("获取附件失败:", e)
+			c.JSON(http.StatusInternalServerError, "获取附件失败，原因: "+e.Error())
 			return
 		}
-		req.Header.Set("User-Agent", srv.nga.GetUA())
+		defer reader.Close()
 
-		resp, e := DoHttp(req)
+		f, e := topic.root.OpenWriter(nfp)
 		if e != nil {
-			c.JSON(http.StatusInternalServerError, "获取附件失败")
-			return
-		}
-		defer resp.Body.Close()
-
-		if resp.StatusCode != http.StatusOK {
-			c.JSON(http.StatusInternalServerError, "获取附件失败，状态码: "+strconv.Itoa(resp.StatusCode))
-			return
-		}
-
-		f, e := topic.root.OpenWriter(fp)
-		if e != nil {
+			log.Println("打开附件文件失败:", e)
 			c.JSON(http.StatusInternalServerError, "打开附件文件失败")
 			return
 		}
 		defer f.Close()
 
-		c.Header("Content-Type", resp.Header.Get("Content-Type"))
-		c.Header("Content-Length", resp.Header.Get("Content-Length"))
+		c.Header("Content-Type", reader.Header.Get("Content-Type"))
+		c.Header("Content-Length", reader.Header.Get("Content-Length"))
 		iw := io.MultiWriter(c.Writer, f)
-		if _, e := io.Copy(iw, resp.Body); e != nil {
+		if _, e := io.Copy(iw, reader); e != nil {
+			log.Println("复制附件内容失败:", e)
 			c.JSON(http.StatusInternalServerError, "复制附件内容失败")
 		}
 	} else {

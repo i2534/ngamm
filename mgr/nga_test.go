@@ -19,7 +19,7 @@ func getNga() *mgr.Client {
 	if e != nil {
 		panic(e)
 	}
-	np := filepath.Join(wd, "../data/ngapost2md")
+	np := filepath.Join(wd, "../data/np2md/ngapost2md")
 	td := os.Getenv("TOPIC_ROOT")
 	nga, e = mgr.InitNGA(mgr.Config{
 		Program:   np,

@@ -2,6 +2,7 @@ package mgr
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -22,8 +23,9 @@ import (
 )
 
 const (
-	NGA_CFG  = "config.ini"
-	USER_DIR = "users"
+	NGA_CFG         = "config.ini"
+	USER_DIR        = "users"
+	ATTACHMENT_BASE = "https://img.nga.178.com/attachments/"
 )
 
 var (
@@ -32,13 +34,13 @@ var (
 
 type User struct {
 	Id         int          `json:"id"`
+	SubFilter  *[]string    `json:"filter,omitempty"`
+	subCronId  cron.EntryID // 订阅任务的 ID
+	forSubTask *time.Timer  // 启动后准备开始订阅任务的定时器
 	Name       string       `json:"name"`
 	Loc        string       `json:"loc"`
 	RegDate    CustomTime   `json:"regDate"`
 	Subscribed bool         `json:"subscribed"`
-	SubFilter  *[]string    `json:"filter,omitempty"`
-	subCronId  cron.EntryID // 订阅任务的 ID
-	forSubTask *time.Timer  // 启动后准备开始订阅任务的定时器
 	saved      bool         // 是否已经保存到文件
 }
 
@@ -180,19 +182,26 @@ func (u *users) Close() error {
 	return nil
 }
 
+type fixRecord struct {
+	topic *Topic
+	fixes map[string]string // 需要修复的资产文件名和对应的内容
+}
+
 type Client struct {
-	root    *ExtRoot
-	dir     string // root 的绝对路径
-	program string // ngapost2md 程序路径
-	topics  string // 帖子目录
-	ua      string
-	baseURL string
-	uid     string
-	cid     string
-	users   *users
-	cron    *cron.Cron
-	srv     *Server
-	lock    *sync.Mutex // program exec lock
+	root      *ExtRoot
+	dir       string // root 的绝对路径
+	program   string // ngapost2md 程序路径
+	topics    string // 帖子目录
+	ua        string
+	baseURL   string
+	uid       string
+	cid       string
+	users     *users
+	cron      *cron.Cron
+	srv       *Server
+	lock      *sync.Mutex // program exec lock
+	fixCh     chan fixRecord
+	useNetPic bool
 }
 
 func InitNGA(global Config) (*Client, error) {
@@ -232,6 +241,7 @@ func InitNGA(global Config) (*Client, error) {
 		users:   newUsers(userDir),
 		cron:    cron.New(cron.WithLocation(TIME_LOC)),
 		lock:    &sync.Mutex{},
+		fixCh:   make(chan fixRecord, 999999),
 	}
 
 	version, e := client.version()
@@ -252,7 +262,6 @@ func InitNGA(global Config) (*Client, error) {
 	if e != nil {
 		return nil, e
 	}
-	cfg.BlockMode = false
 
 	network := cfg.Section("network")
 	ua := network.Key("ua").String()
@@ -273,6 +282,10 @@ func InitNGA(global Config) (*Client, error) {
 	client.cid = cid
 	client.baseURL = network.Key("base_url").String()
 
+	updateConfig(cfg, fp)
+
+	client.useNetPic = cfg.Section("post").Key("use_network_pic_url").MustBool(false)
+
 	if topics != dir { // 帖子目录和程序目录不一致, 复制配置文件到帖子目录
 		log.Printf("复制配置文件到帖子目录: %s\n", topics)
 		if e := CopyFile(fp, filepath.Join(topics, NGA_CFG)); e != nil {
@@ -292,7 +305,41 @@ func InitNGA(global Config) (*Client, error) {
 
 	client.cron.Start()
 
+	go client.doFixAsset()
+
 	return client, nil
+}
+
+func updateConfig(cfg *ini.File, path string) {
+	changed := false
+
+	secCfg := cfg.Section("config")
+	if secCfg.Key("version").String() != "1.8.0" {
+		log.Println("更新配置文件到版本 1.8.0")
+		secCfg.Key("version").SetValue("1.8.0")
+
+		changed = true
+	}
+
+	secPost := cfg.Section("post")
+	if secPost.Key("use_network_pic_url").String() == "" {
+		log.Println("添加 post.use_network_pic_url 配置项")
+		key, e := secPost.NewKey("use_network_pic_url", "True")
+		if e != nil {
+			log.Println("添加 post.use_network_pic_url 配置项失败:", e.Error())
+		} else {
+			key.Comment = "[#109]是否直接使用图片的在线链接，而不是将图片资源下载到本地后做本地图片引用。默认值False（不启用）。"
+			changed = true
+		}
+	} else if secPost.Key("use_network_pic_url").String() == "False" {
+		log.Println("修改 post.use_network_pic_url 配置项为 True")
+		secPost.Key("use_network_pic_url").SetValue("True")
+		changed = true
+	}
+
+	if changed {
+		cfg.SaveTo(path)
+	}
 }
 
 func isEnclosed(s string, start, end rune) bool {
@@ -311,6 +358,9 @@ func (c Client) GetUA() string {
 func (c Client) BaseURL() string {
 	return c.baseURL
 }
+func (c Client) IsUseNetworkPic() bool {
+	return c.useNetPic
+}
 
 // absolute path
 func (c Client) GetTopicRoot() string {
@@ -325,8 +375,8 @@ func (c *Client) version() (string, error) {
 	lines := strings.Split(out, "\n")
 	if len(lines) > 0 {
 		line := strings.TrimSpace(lines[0])
-		if strings.HasPrefix(line, "ngapost2md") {
-			return strings.TrimSpace(strings.TrimPrefix(line, "ngapost2md")), nil
+		if after, ok := strings.CutPrefix(line, "ngapost2md"); ok {
+			return strings.TrimSpace(after), nil
 		}
 	}
 	return "", errors.New("无输出")
@@ -679,5 +729,116 @@ func (c *Client) Close() error {
 	c.users.Close()
 	c.cron.Stop()
 	c.root.Close()
+
+	close(c.fixCh)
+	for range c.fixCh {
+		// 清空 fixCh 中的所有记录
+	}
 	return nil
+}
+
+func (c *Client) AddFixAsset(topic *Topic, fixes map[string]string) {
+	if topic == nil || len(fixes) == 0 {
+		return
+	}
+	if topic.IsClosed() {
+		return
+	}
+	c.fixCh <- fixRecord{
+		topic: topic,
+		fixes: fixes,
+	}
+}
+
+func (c *Client) doFixAsset() {
+	for record := range c.fixCh {
+		if record.topic.IsClosed() {
+			continue
+		}
+		c.processFixRecord(record)
+	}
+}
+func (c Client) joinAttachmentPath(name string) string {
+	if strings.HasPrefix(name, ATTACHMENT_BASE) {
+		return name
+	}
+	if after, ok := strings.CutPrefix(name, "/"); ok {
+		name = after
+	}
+	return ATTACHMENT_BASE + "/" + name
+}
+
+func (c *Client) GetAttachment(url string) (*ResponseReader, error) {
+	log.Group(groupNGA).Printf("获取附件: %s\n", url)
+	// 为每个文件单独设置超时
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+
+	req, e := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
+	if e != nil {
+		cancel()
+		log.Group(groupNGA).Printf("创建请求 %s 失败: %s\n", url, e.Error())
+		return nil, e
+	}
+
+	req.Header.Set("User-Agent", c.GetUA())
+	req.Header.Set("Cookie", "ngaPassportUid="+c.uid+"; ngaPassportCid="+c.cid)
+	req.Header.Set("Host", "img.nga.178.com")
+	req.Header.Set("Referer", c.baseURL)
+	req.Header.Set("Accept", "image/avif,image/webp,image/apng,image/svg+xml,image/*,*/*;q=0.8")
+
+	resp, e := DoHttp(req)
+	if e != nil {
+		cancel()
+		log.Group(groupNGA).Printf("请求 %s 失败: %s\n", url, e.Error())
+		return nil, e
+	}
+
+	if resp.StatusCode != http.StatusOK {
+		cancel()
+		return nil, fmt.Errorf("获取附件失败，状态码: %d", resp.StatusCode)
+	}
+
+	reader, e := BodyReaderWithCancel(resp, cancel)
+	if e != nil {
+		reader.Close()
+		log.Group(groupNGA).Printf("获取响应体失败: %s\n", e.Error())
+		return nil, e
+	}
+	return reader, nil
+}
+
+func (c *Client) processFixRecord(record fixRecord) {
+	for name, src := range record.fixes {
+		if name == "" || src == "" {
+			continue
+		}
+
+		url := c.joinAttachmentPath(src)
+		reader, e := c.GetAttachment(url)
+		if e != nil {
+			log.Group(groupNGA).Printf("获取响应体失败: %s\n", e.Error())
+			continue
+		}
+
+		// 立即读取完整响应体到内存，避免写入时超时
+		data, e := io.ReadAll(reader)
+		reader.Close()
+
+		if e != nil {
+			log.Group(groupNGA).Printf("读取响应体 %s 失败: %s\n", url, e.Error())
+			continue
+		}
+
+		if !IsVaildImage(data) {
+			log.Group(groupNGA).Printf("文件 %s 不是有效的图片, 跳过修复\n", name)
+			continue
+		}
+
+		e = record.topic.root.WriteAll(name, data)
+		if e != nil {
+			log.Group(groupNGA).Printf("写入文件 %s 失败: %s\n", name, e.Error())
+			continue
+		}
+		log.Group(groupNGA).Printf("修复帖子 %d 的资源文件 %s 成功\n", record.topic.Id, name)
+	}
 }
