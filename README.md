@@ -34,6 +34,13 @@
 找到同名的字段, 点击, 在下面的 Cookie Value 中全选, 复制粘贴
 * `ngaPassportCid`: 步骤同上
 
+
+NGA 的图片下载加入了网盾, 尝试使用以下配置解决(不一定能成功)
+
+* 在 `ngapost2md` 程序所在目录放置 [`attachment.ini`](./assets/attachment.ini)
+* 根据实际情况修改对应配置项
+* 重启服务
+
 #### docker
 
 ```shell

@@ -1,6 +1,10 @@
 package mgr_test
 
 import (
+	"bufio"
+	"encoding/json"
+	"io"
+	"net/http"
 	"os"
 	"path/filepath"
 	"testing"
@@ -89,4 +93,100 @@ func TestModUser(t *testing.T) {
 		users["aot10086"] = user
 	}
 	assert.Equal(t, users["9e6"].Subscribed, true)
+}
+
+func TestExtractUserAgents(t *testing.T) {
+	req, err := http.NewRequest("GET", "https://raw.githubusercontent.com/fake-useragent/fake-useragent/refs/heads/main/src/fake_useragent/data/browsers.jsonl", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer resp.Body.Close()
+
+	result := make(map[string][]string)
+
+	scanner := bufio.NewScanner(resp.Body)
+	for scanner.Scan() {
+		line := scanner.Text()
+		data := make(map[string]any)
+		if err := json.Unmarshal([]byte(line), &data); err != nil {
+			t.Fatal(err)
+		}
+		if data["type"] == "desktop" {
+			browser, ok := data["browser"].(string)
+			if !ok {
+				t.Fatalf("Expected browser to be a string, got %T", data["browser"])
+			}
+
+			if browser != "Chrome" && browser != "Firefox" && browser != "Edge" {
+				t.Logf("Skipping browser: %s", browser)
+				continue
+			}
+
+			userAgent, ok := data["useragent"].(string)
+			if !ok {
+				t.Fatalf("Expected useragent to be a string, got %T", data["useragent"])
+			}
+
+			if _, exists := result[browser]; !exists {
+				result[browser] = []string{}
+			}
+
+			array := result[browser]
+
+			has := false
+			for _, existing := range array {
+				if existing == userAgent {
+					t.Logf("Skipping duplicate User-Agent: %s for browser: %s", userAgent, browser)
+					has = true
+					break
+				}
+			}
+			if has {
+				continue
+			}
+
+			result[browser] = append(array, userAgent)
+			t.Logf("Browser: %s, User-Agent: %s", browser, userAgent)
+		}
+	}
+	if err := scanner.Err(); err != nil {
+		t.Fatal(err)
+	}
+
+	out, err := json.Marshal(result)
+	if err != nil {
+		t.Fatal(err)
+	}
+	outFile := "../data/user_agents.json"
+	if err := os.WriteFile(outFile, out, 0644); err != nil {
+		t.Fatalf("Failed to write to file %s: %v", outFile, err)
+	}
+	t.Logf("User agents extracted and saved to %s", outFile)
+}
+
+func TestGetAttachment(t *testing.T) {
+	url := "https://img.nga.178.com/attachments/mon_202508/01/-7Q1ag-2t34K1vT3cSu0-sr.jpg"
+	r, e := getNga().GetAttachment(url)
+	if e != nil {
+		t.Error("Get attachment failed:", e)
+		return
+	}
+	defer r.Close()
+
+	buf := make([]byte, 1024)
+	n, e := r.Read(buf)
+	if e != nil && e != io.EOF {
+		t.Error("Read attachment failed:", e)
+		return
+	}
+	if n == 0 {
+		t.Error("Read attachment returned no data")
+		return
+	}
+	t.Logf("Attachment %s downloaded successfully", url)
+	t.Logf("Read %d bytes, %s", n, buf[:n])
 }

@@ -2,7 +2,7 @@ package mgr
 
 import (
 	"bytes"
-	"context"
+	_ "embed"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -18,12 +18,14 @@ import (
 	"time"
 
 	"github.com/i2534/ngamm/mgr/log"
+	"github.com/imroc/req/v3"
 	"github.com/robfig/cron/v3"
 	"gopkg.in/ini.v1"
 )
 
 const (
 	NGA_CFG         = "config.ini"
+	ATTACHMENT_CFG  = "attachment.ini"
 	USER_DIR        = "users"
 	ATTACHMENT_BASE = "https://img.nga.178.com/attachments/"
 )
@@ -201,6 +203,7 @@ type Client struct {
 	srv       *Server
 	lock      *sync.Mutex // program exec lock
 	fixCh     chan fixRecord
+	attachCfg *AttachConfig // 附件下载配置
 	useNetPic bool
 }
 
@@ -303,11 +306,104 @@ func InitNGA(global Config) (*Client, error) {
 		})
 	}
 
+	client.attachCfg, e = LoadAttachmentConfig(filepath.Join(dir, ATTACHMENT_CFG))
+	if e != nil {
+		log.Printf("加载附件配置文件失败: %s\n", e.Error())
+	}
+
 	client.cron.Start()
 
 	go client.doFixAsset()
 
 	return client, nil
+}
+
+type AttachConfig struct {
+	Base      AttachBaseConfig  `ini:"base"`
+	UserAgent AttachUserAgent   `ini:"ua"`
+	Header    map[string]string `ini:"header"`
+	Proxy     AttachProxyConfig `ini:"proxy"`
+	predined  map[string][]string
+}
+
+type AttachBaseConfig struct {
+	Timeout  time.Duration `ini:"timeout"`
+	MinDelay time.Duration `ini:"min_delay"`
+	MaxDelay time.Duration `ini:"max_delay"`
+}
+
+//go:embed user_agents.json
+var userAgents []byte
+
+type AttachUserAgent struct {
+	Type  string `ini:"type"`
+	Value string `ini:"value"`
+}
+
+type AttachProxyConfig struct {
+	URL string `ini:"url"`
+}
+
+// LoadAttachmentConfig 加载配置文件
+func LoadAttachmentConfig(filepath string) (*AttachConfig, error) {
+	config := &AttachConfig{
+		Header:   make(map[string]string),
+		predined: make(map[string][]string),
+	}
+
+	cfg, e := ini.Load(filepath)
+	if e != nil {
+		log.Printf("加载附件配置文件失败: %s\n", e.Error())
+	} else {
+		// 映射 base 和 proxy 部分
+		if e := cfg.MapTo(config); e != nil {
+			log.Printf("映射附件配置失败: %s\n", e.Error())
+		} else {
+			// 手动处理 header 部分，因为它是动态的
+			hs := cfg.Section("header")
+			for _, key := range hs.Keys() {
+				// 移除反引号包围的值
+				value := key.Value()
+				if len(value) >= 2 && value[0] == '`' && value[len(value)-1] == '`' {
+					value = value[1 : len(value)-1]
+				}
+				config.Header[key.Name()] = value
+			}
+		}
+	}
+
+	if IsZero(config.Base) {
+		config.Base = AttachBaseConfig{
+			Timeout:  10 * time.Second, // 默认超时时间
+			MinDelay: 1 * time.Second,  // 默认最小延迟
+			MaxDelay: 5 * time.Second,  // 默认最大延迟
+		}
+	}
+	if IsZero(config.UserAgent) {
+		config.UserAgent = AttachUserAgent{
+			Type: "Random",
+		}
+	}
+
+	if len(userAgents) > 0 {
+		var predefinedAgents map[string][]string
+		if e := json.Unmarshal(userAgents, &predefinedAgents); e != nil {
+			log.Printf("解析预定义用户代理失败: %s\n", e.Error())
+		}
+		config.predined = predefinedAgents
+	}
+
+	return config, nil
+}
+
+func InitReqClient() *req.Client {
+	// 初始化 req 客户端
+	client := req.C().
+		SetTimeout(10*time.Second).
+		SetCommonRetryCount(3).
+		SetCommonRetryBackoffInterval(1*time.Second, 3*time.Second).
+		DisableAutoDecode()
+	return client
 }
 
 func updateConfig(cfg *ini.File, path string) {
@@ -434,31 +530,24 @@ func (c *Client) execute(args []string, dir string) (string, error) {
 }
 
 func (c *Client) getHTML(url string) (string, error) {
-	req, e := http.NewRequest(http.MethodGet, url, nil)
-	if e != nil {
-		return "", fmt.Errorf("创建请求失败: %w", e)
-	}
-	req.Header.Set("User-Agent", c.GetUA())
-	req.Header.Set("Cookie", "ngaPassportUid="+c.uid+"; ngaPassportCid="+c.cid)
-
 	log.Group(groupNGA).Printf("请求 %s\n", url)
 
-	resp, e := DoHttp(req)
+	resp, e := InitReqClient().
+		SetUserAgent(c.GetUA()).
+		R().
+		SetHeader("Cookie", "ngaPassportUid="+c.uid+"; ngaPassportCid="+c.cid).
+		Get(url)
+
 	if e != nil {
 		return "", fmt.Errorf("请求 %s 失败: %w", url, e)
 	}
-	reader, e := BodyReader(resp)
-	if e != nil {
-		reader.Close()
-		return "", fmt.Errorf("获取响应体失败: %w", e)
-	}
-	defer reader.Close()
 
 	if resp.StatusCode != http.StatusOK {
 		return "", fmt.Errorf("请求 %s 失败, 状态码 %d", url, resp.StatusCode)
 	}
 
-	data, e := GBKReadAll(reader)
+	// req/v3 会自动处理响应体的读取和关闭
+	data, e := GBKReadAll(strings.NewReader(resp.String()))
 	if e != nil {
 		return "", fmt.Errorf("解码响应失败: %w", e)
 	}
@@ -756,6 +845,16 @@ func (c *Client) doFixAsset() {
 			continue
 		}
 		c.processFixRecord(record)
+		// 随机等待，避免处理过快和固定模式
+		minDelay := c.attachCfg.Base.MinDelay
+		maxDelay := c.attachCfg.Base.MaxDelay
+		if minDelay <= 0 {
+			minDelay = 1 * time.Second // 默认最小延迟 1 秒
+		}
+		if maxDelay <= 0 {
+			maxDelay = 5 * time.Second // 默认最大延迟 5 秒
+		}
+		time.Sleep(minDelay + time.Duration(rand.Int63n(int64(maxDelay-minDelay))))
 	}
 }
 func (c Client) joinAttachmentPath(name string) string {
@@ -770,40 +869,74 @@ func (c Client) joinAttachmentPath(name string) string {
 
 func (c *Client) GetAttachment(url string) (*ResponseReader, error) {
 	log.Group(groupNGA).Printf("获取附件: %s\n", url)
-	// 为每个文件单独设置超时
-	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 
-	req, e := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
-	if e != nil {
-		cancel()
-		log.Group(groupNGA).Printf("创建请求 %s 失败: %s\n", url, e.Error())
-		return nil, e
+	// 创建请求并设置超时和头部信息
+	rc := InitReqClient().SetTimeout(c.attachCfg.Base.Timeout)
+
+	// 设置 User-Agent
+	uat := c.attachCfg.UserAgent.Type
+	uav := c.attachCfg.UserAgent.Value
+	if uat == "Random" {
+		keys := make([]string, 0, len(c.attachCfg.predined))
+		for k := range c.attachCfg.predined {
+			keys = append(keys, k)
+		}
+		if len(keys) > 0 {
+			// 随机选择一个预定义的 User-Agent
+			randKey := keys[rand.Intn(len(keys))]
+			if agents, ok := c.attachCfg.predined[randKey]; ok {
+				uat = randKey
+				uav = agents[rand.Intn(len(agents))]
+			}
+		}
+	}
+	switch uat {
+	case "Random":
+	case "Chrome":
+		if uav == "" {
+			uav = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/134.0.0.0 Safari/537.3"
+		}
+		rc = rc.SetUserAgent(uav).SetTLSFingerprintChrome()
+	case "Firefox":
+		if uav == "" {
+			uav = "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:141.0) Gecko/20100101 Firefox/141.0"
+		}
+		rc = rc.SetUserAgent(uav).SetTLSFingerprintFirefox()
+	case "Edge":
+		if uav == "" {
+			uav = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/138.0.0.0 Safari/537.36 Edg/138.0.0.0"
+		}
+		rc = rc.SetUserAgent(uav).SetTLSFingerprintEdge()
 	}
 
-	req.Header.Set("User-Agent", c.GetUA())
-	req.Header.Set("Cookie", "ngaPassportUid="+c.uid+"; ngaPassportCid="+c.cid)
-	req.Header.Set("Host", "img.nga.178.com")
-	req.Header.Set("Referer", c.baseURL)
-	req.Header.Set("Accept", "image/avif,image/webp,image/apng,image/svg+xml,image/*,*/*;q=0.8")
+	// 如果配置了代理，设置代理
+	if c.attachCfg != nil && c.attachCfg.Proxy.URL != "" {
+		rc = rc.SetProxyURL(c.attachCfg.Proxy.URL)
+	}
 
-	resp, e := DoHttp(req)
+	r := rc.R()
+	// 设置配置文件中的自定义header
+	if len(c.attachCfg.Header) > 0 {
+		r = r.SetHeaders(c.attachCfg.Header)
+	}
+
+	resp, e := r.Get(url)
+
 	if e != nil {
-		cancel()
 		log.Group(groupNGA).Printf("请求 %s 失败: %s\n", url, e.Error())
 		return nil, e
 	}
 
 	if resp.StatusCode != http.StatusOK {
-		cancel()
-		return nil, fmt.Errorf("获取附件失败，状态码: %d", resp.StatusCode)
+		log.Group(groupNGA).Printf("获取失败，状态码: %d, 响应内容: %s", resp.StatusCode, resp.String())
+		return nil, fmt.Errorf("获取失败，原因: %s", resp.Status)
 	}
 
-	reader, e := BodyReaderWithCancel(resp, cancel)
-	if e != nil {
-		reader.Close()
-		log.Group(groupNGA).Printf("获取响应体失败: %s\n", e.Error())
-		return nil, e
+	reader := &ResponseReader{
+		ReadCloser: resp.Body,
+		Header:     resp.Header,
 	}
+
 	return reader, nil
 }
 

@@ -13,6 +13,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"reflect"
 	"strings"
 	"time"
 
@@ -448,4 +449,8 @@ func IsVaildImage(data []byte) bool {
 		return false
 	}
 	return true
+}
+
+func IsZero[T any](t T) bool {
+	return reflect.ValueOf(t).IsZero()
 }
