@@ -14,8 +14,9 @@
     <script>
         const id = '{{.ID}}';
         const token = '{{.Token}}';
-        const content = `{{.Markdown}}`;
-        render('{{.BaseUrl}}', id, token, content);
+        const content = '{{.Markdown}}';
+        const replaceAttachment = '{{.ReplaceAttachment}}';
+        render('{{.BaseUrl}}', id, token, content, replaceAttachment);
     </script>
 </head>
 

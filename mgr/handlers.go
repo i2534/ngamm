@@ -519,12 +519,13 @@ func (srv *Server) replaySmile(c *gin.Context, name string) {
 }
 
 type viewTplData struct {
-	Title    string
-	ID       int
-	Token    string
-	BaseUrl  string
-	Markdown template.HTML
-	Version  string
+	Title             string
+	ID                int
+	Token             string
+	BaseUrl           string
+	Markdown          template.HTML
+	Version           string
+	ReplaceAttachment bool
 }
 
 func (srv *Server) viewTopic() func(c *gin.Context) {
@@ -560,12 +561,13 @@ func (srv *Server) viewTopic() func(c *gin.Context) {
 			token = "-"
 		}
 		data := viewTplData{
-			Title:    title,
-			ID:       id,
-			Token:    token,
-			BaseUrl:  srv.nga.BaseURL(),
-			Markdown: template.HTML(markdown),
-			Version:  srv.Cfg.GitHash,
+			Title:             title,
+			ID:                id,
+			Token:             token,
+			BaseUrl:           srv.nga.BaseURL(),
+			Markdown:          template.HTML(markdown),
+			Version:           srv.Cfg.GitHash,
+			ReplaceAttachment: srv.nga.attachCfg.Base.AutoReplace,
 		}
 		c.Header("Content-Type", HTML_HEADER)
 		if e := tmpl.Execute(c.Writer, data); e != nil {

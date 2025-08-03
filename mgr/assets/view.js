@@ -1,4 +1,4 @@
-function render(ngaBase, id, token, content) {
+function render(ngaBase, id, token, content, replaceAttachment) {
     const origin = window.location.origin;
     const baseUrl = `${origin}/view/${token}/${id}/`;
     const ngaPostBase = `${ngaBase}/read.php?tid=`;
@@ -186,6 +186,10 @@ function render(ngaBase, id, token, content) {
         if (!src.startsWith(ngaAttachBase)) {
             return src;
         }
+        if (replaceAttachment !== true && replaceAttachment !== 'true') {
+            return src;
+        }
+
         if (floor === undefined || floor === null) {
             floor = '-1';
         }

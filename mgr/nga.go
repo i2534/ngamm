@@ -327,9 +327,11 @@ type AttachConfig struct {
 }
 
 type AttachBaseConfig struct {
-	Timeout  time.Duration `ini:"timeout"`
-	MinDelay time.Duration `ini:"min_delay"`
-	MaxDelay time.Duration `ini:"max_delay"`
+	Timeout     time.Duration `ini:"timeout"`
+	MinDelay    time.Duration `ini:"min_delay"`
+	MaxDelay    time.Duration `ini:"max_delay"`
+	AutoDown    bool          `ini:"auto_down"`
+	AutoReplace bool          `ini:"auto_replace"`
 }
 
 //go:embed user_agents.json
@@ -374,9 +376,11 @@ func LoadAttachmentConfig(filepath string) (*AttachConfig, error) {
 
 	if IsZero(config.Base) {
 		config.Base = AttachBaseConfig{
-			Timeout:  10 * time.Second, // 默认超时时间
-			MinDelay: 1 * time.Second,  // 默认最小延迟
-			MaxDelay: 5 * time.Second,  // 默认最大延迟
+			Timeout:     10 * time.Second, // 默认超时时间
+			MinDelay:    1 * time.Second,  // 默认最小延迟
+			MaxDelay:    5 * time.Second,  // 默认最大延迟
+			AutoDown:    true,             // 默认启用自动下载
+			AutoReplace: true,             // 默认启用自动替换
 		}
 	}
 	if IsZero(config.UserAgent) {

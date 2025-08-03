@@ -339,6 +339,11 @@ func (t *Topic) TryFixAssets(nga *Client) {
 	if nga == nil {
 		return
 	}
+	if !nga.attachCfg.Base.AutoDown {
+		log.Group(groupTopic).Printf("自动下载附件已禁用, 跳过 %d 的附件下载\n", t.Id)
+		return
+	}
+
 	t.fixInvalidAssets(nga)
 
 	if nga.IsUseNetworkPic() {
