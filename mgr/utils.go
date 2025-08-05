@@ -454,3 +454,71 @@ func IsVaildImage(data []byte) bool {
 func IsZero[T any](t T) bool {
 	return reflect.ValueOf(t).IsZero()
 }
+
+func ToFloat(v any, defVal float64) float64 {
+	switch v := v.(type) {
+	case float32:
+		return float64(v)
+	case float64:
+		return v
+	case int:
+		return float64(v)
+	case int8:
+		return float64(v)
+	case int16:
+		return float64(v)
+	case int32:
+		return float64(v)
+	case int64:
+		return float64(v)
+	case uint:
+		return float64(v)
+	case uint8:
+		return float64(v)
+	case uint16:
+		return float64(v)
+	case uint32:
+		return float64(v)
+	case uint64:
+		return float64(v)
+	default:
+		return defVal
+	}
+}
+
+func ToString(v any, defVal string) string {
+	switch v := v.(type) {
+	case string:
+		return v
+	case []byte:
+		return string(v)
+	case fmt.Stringer:
+		return v.String()
+	default:
+		return defVal
+	}
+}
+
+func ToBool(v any, defVal bool) bool {
+	switch v := v.(type) {
+	case bool:
+		return v
+	case string:
+		switch v {
+		case "true", "1":
+			return true
+		case "false", "0":
+			return false
+		}
+		return defVal
+	default:
+		f := ToFloat(v, -1)
+		switch f {
+		case 1:
+			return true
+		case 0:
+			return false
+		}
+		return defVal
+	}
+}

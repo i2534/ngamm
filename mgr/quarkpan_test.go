@@ -73,7 +73,7 @@ func TestQuarkLs(t *testing.T) {
 	quark := testInitQuarkPan(t)
 	defer quark.Close()
 
-	if ns, err := quark.Ls("/MyTransfer"); err != nil {
+	if ns, err := quark.Ls("/来自：分享/0"); err != nil {
 		t.Fatalf("Failed to list files: %v", err)
 	} else {
 		t.Logf("File: %+v", ns)

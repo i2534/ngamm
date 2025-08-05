@@ -106,22 +106,26 @@ func (q *QuarkPan) Init() error {
 			for task := range q.tasks {
 				var e error
 				var status string
-				if task.opt == PAN_OPT_DELETE {
+				switch task.opt {
+				case PAN_OPT_DELETE:
 					dir := q.topicDir(task.topicId)
 					getFids := q.quark.GetFids([]string{dir})
 					if len(getFids) > 0 {
-						toPdirFid := getFids[0]["fid"].(string)
-						q.quark.Delete([]string{toPdirFid})
+						if toPdirFid := ToString(getFids[0]["fid"], ""); toPdirFid != "" {
+							q.quark.Delete([]string{toPdirFid})
+						}
 					}
 					status = TRANSFER_STATUS_PENDING
-				} else if task.opt == PAN_OPT_SAVE {
+				case PAN_OPT_SAVE:
 					e = q.doTransfer(task)
 					status = TRANSFER_STATUS_SUCCESS
 				}
-				if e != nil {
-					q.holder.notify(task.topicId, task.record.URL, TRANSFER_STATUS_FAILED, e.Error())
-				} else {
-					q.holder.notify(task.topicId, task.record.URL, status, "")
+				if q.holder != nil {
+					if e != nil {
+						q.holder.notify(task.topicId, task.record.URL, TRANSFER_STATUS_FAILED, e.Error())
+					} else {
+						q.holder.notify(task.topicId, task.record.URL, status, "")
+					}
 				}
 			}
 		}()
@@ -168,16 +172,16 @@ func (q *QuarkPan) doTransfer(task quarkTask) error {
 	for _, file := range shareFileList {
 		fileMap := file.(map[string]any)
 
-		ban := fileMap["ban"].(bool)
-		name := fileMap["file_name"].(string)
+		ban := ToBool(fileMap["ban"], false)
+		name := ToString(fileMap["file_name"], "")
 		if ban {
 			log.Group(groupPan).Printf("QuarkPan: 文件 %s 被 Ban, 跳过", name)
 			continue
 		}
 		fs[name] = quarkFile{
-			fid:      fileMap["fid"].(string),
-			fidToken: fileMap["share_fid_token"].(string),
-			size:     fileMap["size"].(float64),
+			fid:      ToString(fileMap["fid"], ""),
+			fidToken: ToString(fileMap["share_fid_token"], ""),
+			size:     ToFloat(fileMap["size"], 0),
 		}
 	}
 	if len(fs) == 0 {
@@ -190,21 +194,21 @@ func (q *QuarkPan) doTransfer(task quarkTask) error {
 
 	getFids := quark.GetFids([]string{dir})
 	if len(getFids) > 0 {
-		toPdirFid = getFids[0]["fid"].(string)
+		toPdirFid = ToString(getFids[0]["fid"], "")
 	} else {
 		mkdirResult := quark.Mkdir(dir)
-		if mkdirResult["code"].(float64) == 0 {
-			toPdirFid = mkdirResult["data"].(map[string]any)["fid"].(string)
+		if ToFloat(mkdirResult["code"], -1) == 0 {
+			toPdirFid = ToString(mkdirResult["data"].(map[string]any)["fid"], "")
 		} else {
-			return fmt.Errorf("QuarkPan: 创建目录 %s 失败, %s", dir, mkdirResult["message"].(string))
+			return fmt.Errorf("QuarkPan: 创建目录 %s 失败, %s", dir, ToString(mkdirResult["message"], ""))
 		}
 	}
 
 	dirFileList := quark.LsDir(toPdirFid, 0)
 	for _, file := range dirFileList {
-		fileName := file["file_name"].(string)
+		fileName := ToString(file["file_name"], "")
 		if f, ok := fs[fileName]; ok {
-			if f.size == file["size"].(float64) {
+			if f.size == ToFloat(file["size"], 0) {
 				log.Group(groupPan).Printf("QuarkPan: 文件 %s 已存在, 跳过", fileName)
 				delete(fs, fileName)
 			}
@@ -222,7 +226,7 @@ func (q *QuarkPan) doTransfer(task quarkTask) error {
 	}
 	// 保存文件
 	saveFile := quark.SaveFile(fidList, fidTokenList, toPdirFid, pwdID, stoken)
-	if saveFile["code"].(float64) != 0 {
+	if ToFloat(saveFile["code"], -1) != 0 {
 		if len(dirFileList) == 0 { // 保存前为空目录, 保存又失败, 再次判断目录是否为空
 			if dirFileList = quark.LsDir(toPdirFid, 0); len(dirFileList) == 0 {
 				log.Group(groupPan).Printf("QuarkPan: 目录 %s 为空, 删除", dir)
@@ -230,7 +234,7 @@ func (q *QuarkPan) doTransfer(task quarkTask) error {
 				quark.Delete([]string{toPdirFid})
 			}
 		}
-		return fmt.Errorf("QuarkPan: 保存文件失败, %s", saveFile["message"].(string))
+		return fmt.Errorf("QuarkPan: 保存文件失败, %s", ToString(saveFile["message"], ""))
 	}
 
 	log.Group(groupPan).Printf("QuarkPan: 处理转存任务完成: %d, %s\n", task.topicId, url)
@@ -243,7 +247,7 @@ func (q *QuarkPan) Ls(dir string) (any, error) {
 	if len(fids) == 0 {
 		return nil, fmt.Errorf("QuarkPan: 目录 %s 不存在", dir)
 	}
-	fid := fids[0]["fid"].(string)
+	fid := ToString(fids[0]["fid"], "")
 	list := quark.LsDir(fid, 0)
 	return list, nil
 }

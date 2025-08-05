@@ -442,8 +442,11 @@ func (q *Quark) GetFids(filePaths []string) []map[string]any {
 // 列出目录内容
 func (q *Quark) LsDir(pdirFid string, fetchFullPath int) []map[string]any {
 	var fileList []map[string]any
-	page := 1
+	if pdirFid == "" {
+		return fileList
+	}
 
+	page := 1
 	for {
 		urlStr := fmt.Sprintf("%s/1/clouddrive/file/sort", q.BaseURL)
 		params := map[string]string{
