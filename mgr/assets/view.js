@@ -9,6 +9,7 @@ function render(ngaBase, id, token, content, replaceAttachment) {
     const vwm = urlParams.get('vwm') == "true"; // view without media
 
     const attrSrc = '_src', attrPoster = '_poster';
+    const isReplaceAttachment = replaceAttachment === true || replaceAttachment === 'true';
 
     const renderer = {
         heading({ tokens, depth }) {
@@ -186,7 +187,7 @@ function render(ngaBase, id, token, content, replaceAttachment) {
         if (!src.startsWith(ngaAttachBase)) {
             return src;
         }
-        if (replaceAttachment !== true && replaceAttachment !== 'true') {
+        if (!isReplaceAttachment) {
             return src;
         }
 
