@@ -872,7 +872,7 @@ func (c Client) joinAttachmentPath(name string) string {
 }
 
 func (c *Client) GetAttachment(url string) (*ResponseReader, error) {
-	log.Group(groupNGA).Printf("获取附件: %s\n", url)
+	log.Printf("获取附件: %s\n", url)
 
 	// 创建请求并设置超时和头部信息
 	rc := InitReqClient().SetTimeout(c.attachCfg.Base.Timeout)
@@ -953,7 +953,7 @@ func (c *Client) processFixRecord(record fixRecord) {
 		url := c.joinAttachmentPath(src)
 		reader, e := c.GetAttachment(url)
 		if e != nil {
-			log.Group(groupNGA).Printf("获取响应体失败: %s\n", e.Error())
+			log.Printf("获取响应体失败: %s\n", e.Error())
 			continue
 		}
 
@@ -962,20 +962,20 @@ func (c *Client) processFixRecord(record fixRecord) {
 		reader.Close()
 
 		if e != nil {
-			log.Group(groupNGA).Printf("读取响应体 %s 失败: %s\n", url, e.Error())
+			log.Printf("读取响应体 %s 失败: %s\n", url, e.Error())
 			continue
 		}
 
 		if !IsVaildImage(data) {
-			log.Group(groupNGA).Printf("文件 %s 不是有效的图片, 跳过修复\n", name)
+			log.Printf("文件 %s 不是有效的图片, 跳过修复\n", name)
 			continue
 		}
 
 		e = record.topic.root.WriteAll(name, data)
 		if e != nil {
-			log.Group(groupNGA).Printf("写入文件 %s 失败: %s\n", name, e.Error())
+			log.Printf("写入文件 %s 失败: %s\n", name, e.Error())
 			continue
 		}
-		log.Group(groupNGA).Printf("修复帖子 %d 的资源文件 %s 成功\n", record.topic.Id, name)
+		log.Printf("修复帖子 %d 的资源文件 %s 成功\n", record.topic.Id, name)
 	}
 }

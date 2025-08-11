@@ -287,6 +287,12 @@ func (srv *Server) process() {
 			continue
 		}
 
+		// 检查是否已放弃更新
+		if old.Metadata.Abandon {
+			log.Group(groupTopic).Printf("帖子 %d 已放弃更新\n", id)
+			continue
+		}
+
 		if old.Title == "" {
 			log.Group(groupTopic).Printf("更新帖子 %d\n", id)
 		} else {

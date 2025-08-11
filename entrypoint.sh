@@ -21,7 +21,7 @@ setup_directories() {
 
 # 获取ngapost2md二进制文件
 fetch_ngapost2md() {
-    local bin_url="https://github.com/ludoux/ngapost2md/releases/download/1.8.0/ngapost2md-NEO_1.8.0-linux-amd64.tar.gz"
+    local bin_url="https://github.com/ludoux/ngapost2md/releases/download/1.8.2/ngapost2md-NEO_1.8.2-linux-amd64.tar.gz"
     echo "正在从 $bin_url 获取 ngapost2md ..."
     local tmp=ngapost2md.bin
     local dir=$dir_np2md
