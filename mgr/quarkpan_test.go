@@ -36,7 +36,13 @@ func testInitQuarkPan(t *testing.T) *mgr.QuarkPan {
 func TestQuarkDelete(t *testing.T) {
 	cookie := testGetQuarkCookie(t)
 	quark := mgr.NewQuark(cookie)
-	quark.Init()
+	info, err := quark.Init()
+	if err != nil {
+		t.Fatalf("Failed to initialize Quark: %v", err)
+	}
+	if info == nil {
+		t.Fatalf("Failed to initialize Quark: %v", info)
+	}
 	getFids := quark.GetFids([]string{"/test/aaaa"})
 	f0 := getFids[0]
 	t.Logf("Fid: %+v", f0)

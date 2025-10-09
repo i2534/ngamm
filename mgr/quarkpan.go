@@ -87,7 +87,10 @@ func (q *QuarkPan) Init() error {
 	}
 
 	quark := NewQuark(cookie)
-	info := quark.Init()
+	info, err := quark.Init()
+	if err != nil {
+		return fmt.Errorf("QuarkPan: 初始化失败: %s", err.Error())
+	}
 	if info == nil {
 		return fmt.Errorf("QuarkPan: 初始化失败")
 	}

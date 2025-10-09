@@ -168,18 +168,21 @@ func (q *Quark) sendRequest(method, urlStr string, params map[string]string, jso
 }
 
 // 初始化账号
-func (q *Quark) Init() map[string]any {
-	accountInfo := q.GetAccountInfo()
-	if accountInfo != nil {
-		q.IsActive = true
-		q.Nickname = accountInfo["nickname"].(string)
-		return accountInfo
+func (q *Quark) Init() (map[string]any, error) {
+	info, err := q.GetAccountInfo()
+	if err != nil {
+		return nil, err
 	}
-	return nil
+	if info != nil {
+		q.IsActive = true
+		q.Nickname = info["nickname"].(string)
+		return info, nil
+	}
+	return nil, nil
 }
 
 // 获取账号信息
-func (q *Quark) GetAccountInfo() map[string]any {
+func (q *Quark) GetAccountInfo() (map[string]any, error) {
 	urlStr := "https://pan.quark.cn/account/info"
 	params := map[string]string{
 		"fr":       "pc",
@@ -188,24 +191,31 @@ func (q *Quark) GetAccountInfo() map[string]any {
 
 	resp, err := q.sendRequest("GET", urlStr, params, nil, nil)
 	if err != nil {
-		return nil
+		return nil, err
 	}
 	defer resp.Body.Close()
 
 	body, err := io.ReadAll(resp.Body)
 	if err != nil {
-		return nil
+		return nil, err
 	}
 
 	var result map[string]any
 	if err := json.Unmarshal(body, &result); err != nil {
-		return nil
+		return nil, err
+	}
+	success := result["success"].(bool)
+	if !success {
+		code := result["code"].(string)
+		msg := result["msg"].(string)
+		fmt.Printf("Quark: 获取账号信息失败, code: %s, msg: %s\n", code, msg)
+		return nil, fmt.Errorf("获取账号信息失败, code: %s, msg: %s", code, msg)
 	}
 
 	if data, ok := result["data"].(map[string]any); ok {
-		return data
+		return data, nil
 	}
-	return nil
+	return nil, nil
 }
 
 // 获取成长信息
@@ -1081,23 +1091,4 @@ func DoSign(account *Quark) {
 		}
 	}
 	fmt.Println()
-}
-
-// 验证账号
-func VerifyAccount(account *Quark) bool {
-	fmt.Printf("▶️ 验证第%d个账号\n", account.Index)
-
-	if !strings.Contains(account.Cookie, "__uid") {
-		fmt.Println("💡 不存在cookie必要参数，判断为仅签到")
-		return false
-	} else {
-		accountInfo := account.Init()
-		if accountInfo == nil {
-			fmt.Printf("👤 第%d个账号登录失败，cookie无效❌\n", account.Index)
-			return false
-		} else {
-			fmt.Printf("👤 账号昵称: %s✅\n", accountInfo["nickname"])
-			return true
-		}
-	}
 }
