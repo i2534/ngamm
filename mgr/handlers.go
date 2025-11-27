@@ -84,6 +84,15 @@ func (srv *Server) regHandlers() {
 		pg.POST("/:token/:id", srv.topicPanOperate())
 	}
 
+	pg2 := r.Group("/pan2")
+	{
+		if has {
+			pg2.Use(srv.viewMiddleware())
+		}
+		pg2.GET("/:token/:id", srv.topicPan2Records())
+		pg2.POST("/:token/:id", srv.topicPan2Operate())
+	}
+
 	r.GET("/", srv.homePage())
 	r.GET("/favicon.ico", srv.favicon())
 	r.GET("/asset/:name", srv.asset())

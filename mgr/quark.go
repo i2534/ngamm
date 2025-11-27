@@ -16,7 +16,7 @@ import (
 
 // Copy from: https://github.com/Cp0204/quark-auto-save/blob/main/quark_auto_save.py ffe95fc class Quark:
 // Transfer by AI
-// Quark 类的Go实现
+// Quark 类的 Go 实现
 type Quark struct {
 	BaseURL     string
 	BaseURLApp  string
@@ -1091,4 +1091,37 @@ func DoSign(account *Quark) {
 		}
 	}
 	fmt.Println()
+}
+
+func (q *Quark) Move(srcId, dstId string) (map[string]any, error) {
+	urlStr := fmt.Sprintf("%s/1/clouddrive/file/move", q.BaseURL)
+	params := map[string]string{
+		"pr":           "ucpro",
+		"fr":           "pc",
+		"uc_param_str": "",
+	}
+
+	payload := map[string]any{
+		"action_type":  1,
+		"exclude_fids": make([]string, 0),
+		"filelist":     []string{srcId},
+		"to_pdir_fid":  dstId,
+	}
+
+	resp, err := q.sendRequest("POST", urlStr, params, payload, nil)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return nil, err
+	}
+
+	var result map[string]any
+	if err := json.Unmarshal(body, &result); err != nil {
+		return nil, err
+	}
+	return result, nil
 }

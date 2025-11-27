@@ -322,6 +322,196 @@ function render(ngaBase, id, token, content, replaceAttachment) {
                 });
         }
     }
+    // 更新网盘详情 UI 的辅助函数
+    function updatePanDetailUI(data) {
+        const container = document.querySelector('#panDetailContainer');
+        if (!container) {
+            return;
+        }
+
+        // 获取所有存在的网盘名称
+        const existingPans = Object.entries(data)
+            .filter(([name, exists]) => exists === true)
+            .map(([name]) => name);
+
+        // 如果所有结果都为 false，删除整个容器
+        if (existingPans.length === 0) {
+            container.remove();
+            return;
+        }
+
+        // 如果有存在的网盘，为每个网盘显示操作按钮
+        container.innerHTML = '';
+        container.style.display = 'flex';
+        container.style.flexDirection = 'column';
+        container.style.gap = '8px';
+
+        // 为每个存在的网盘创建一组按钮
+        existingPans.forEach(panName => {
+            // 创建网盘项容器（一行显示）
+            const panItem = document.createElement('div');
+            panItem.style.display = 'flex';
+            panItem.style.alignItems = 'center';
+            panItem.style.gap = '8px';
+            panItem.style.width = '100%';
+
+            // 显示网盘图标
+            const panIcon = document.createElement('img');
+            panIcon.src = `${origin}/asset/${panName.toLowerCase()}.ico`;
+            panIcon.alt = panName.charAt(0).toUpperCase();
+            panIcon.title = panName;
+            panIcon.style.width = '20px';
+            panIcon.style.height = '20px';
+            panIcon.style.objectFit = 'contain';
+            panItem.appendChild(panIcon);
+
+            // 删除按钮
+            const deleteBtn = document.createElement('button');
+            deleteBtn.textContent = '删除';
+            deleteBtn.style.flex = '1';
+            deleteBtn.onclick = function () {
+                if (confirm(`确定要删除 ${panName} 网盘中的数据吗？`)) {
+                    deleteBtn.disabled = true;
+                    deleteBtn.textContent = '删除中...';
+
+                    fetch(`${origin}/pan2/${token}/${id}`, {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json'
+                        },
+                        body: JSON.stringify({
+                            name: panName,
+                            act: 'delete'
+                        })
+                    })
+                        .then(r => {
+                            if (r.ok) {
+                                return r.json();
+                            } else {
+                                return r.json().then(data => {
+                                    throw new Error(data.error || `请求失败: ${r.statusText}`);
+                                });
+                            }
+                        })
+                        .then(data => {
+                            if (data.error) {
+                                alert(data.error);
+                                deleteBtn.disabled = false;
+                                deleteBtn.textContent = '删除';
+                            } else {
+                                alert('删除成功');
+                                // 重新查询网盘详情
+                                refreshPanDetail();
+                            }
+                        })
+                        .catch(e => {
+                            console.error('删除失败:', e);
+                            alert('删除失败: ' + e.message);
+                            deleteBtn.disabled = false;
+                            deleteBtn.textContent = '删除';
+                        });
+                }
+            };
+            panItem.appendChild(deleteBtn);
+
+            // 移动按钮
+            const moveBtn = document.createElement('button');
+            moveBtn.textContent = '移动';
+            moveBtn.style.flex = '1';
+            moveBtn.onclick = function () {
+                if (confirm(`确定要移动 ${panName} 网盘中的数据吗？`)) {
+                    moveBtn.disabled = true;
+                    moveBtn.textContent = '移动中...';
+
+                    fetch(`${origin}/pan2/${token}/${id}`, {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json'
+                        },
+                        body: JSON.stringify({
+                            name: panName,
+                            act: 'move'
+                        })
+                    })
+                        .then(r => {
+                            if (r.ok) {
+                                return r.json();
+                            } else {
+                                return r.json().then(data => {
+                                    throw new Error(data.error || `请求失败: ${r.statusText}`);
+                                });
+                            }
+                        })
+                        .then(data => {
+                            if (data.error) {
+                                alert(data.error);
+                                moveBtn.disabled = false;
+                                moveBtn.textContent = '移动';
+                            } else {
+                                alert('移动成功');
+                                // 重新查询网盘详情
+                                refreshPanDetail();
+                            }
+                        })
+                        .catch(e => {
+                            console.error('移动失败:', e);
+                            alert('移动失败: ' + e.message);
+                            moveBtn.disabled = false;
+                            moveBtn.textContent = '移动';
+                        });
+                }
+            };
+            panItem.appendChild(moveBtn);
+
+            container.appendChild(panItem);
+        });
+    }
+
+    window.checkPanDetail = function () {
+        const button = document.querySelector('#panDetailButton');
+
+        if (!button || button.disabled) {
+            return;
+        }
+
+        button.disabled = true;
+        button.textContent = '查询中...';
+
+        fetch(`${origin}/pan2/${token}/${id}`)
+            .then(r => {
+                if (r.ok) {
+                    return r.json();
+                } else {
+                    throw new Error(`请求失败: ${r.statusText}`);
+                }
+            })
+            .then(data => {
+                updatePanDetailUI(data);
+            })
+            .catch(e => {
+                console.error('查询网盘详情失败:', e);
+                button.textContent = '网盘详情 X';
+                button.disabled = false;
+            });
+    }
+
+    // 刷新网盘详情的辅助函数
+    function refreshPanDetail() {
+        fetch(`${origin}/pan2/${token}/${id}`)
+            .then(r => {
+                if (r.ok) {
+                    return r.json();
+                } else {
+                    throw new Error(`请求失败: ${r.statusText}`);
+                }
+            })
+            .then(data => {
+                updatePanDetailUI(data);
+            })
+            .catch(e => {
+                console.error('刷新网盘详情失败:', e);
+            });
+    }
 
     const observer = new IntersectionObserver((entries, observer) => {
         entries.filter(e => e.isIntersecting)

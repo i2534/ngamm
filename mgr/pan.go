@@ -27,8 +27,8 @@ const (
 	TRANSFER_STATUS_SUCCESS = "success" // 成功
 	TRANSFER_STATUS_FAILED  = "failed"  // 失败
 
-	PAN_OPT_SAVE   PanOpt = 1 // 保存
-	PAN_OPT_DELETE PanOpt = 2 // 删除
+	PAN_OPT_SAVE   PanOpt = iota // 保存
+	PAN_OPT_DELETE PanOpt = iota // 删除
 )
 
 var (
@@ -47,13 +47,19 @@ var (
 type Pan interface {
 	io.Closer
 	Name() string
+	SetHolder(holder *PanHolder)
 	Init() error
 	Support(record TransferRecord) bool
 	TransferType() string
 	// 保存分享到网盘, 实现自行处理队列
 	Transfer(topicId int, record TransferRecord) error
-	SetHolder(holder *PanHolder)
-	Operate(topicId int, record *TransferRecord, opt PanOpt) error
+	TransferOpt(topicId int, record *TransferRecord, opt PanOpt) error
+	// 是否存在
+	IsExist(topicId int) bool
+	// 移动
+	Move(topicId int) error
+	// 删除
+	Delete(topicId int) error
 }
 
 type TransferRecord struct {
@@ -547,7 +553,7 @@ func (srv *Server) topicPanOperate() func(c *gin.Context) {
 
 		for _, pan := range srv.cache.pans.Pans {
 			if pan.Support(*record) {
-				if e := pan.Operate(topic.Id, record, opt); e != nil {
+				if e := pan.TransferOpt(topic.Id, record, opt); e != nil {
 					c.JSON(http.StatusInternalServerError, toErr(e.Error()))
 					return
 				}
@@ -555,6 +561,86 @@ func (srv *Server) topicPanOperate() func(c *gin.Context) {
 			}
 		}
 
+		c.JSON(http.StatusOK, true)
+	}
+}
+
+func (srv *Server) topicPan2Records() func(c *gin.Context) {
+	return func(c *gin.Context) {
+		id, e := strconv.Atoi(c.Param("id"))
+		if e != nil {
+			c.JSON(http.StatusBadRequest, toErr("无效的帖子 ID"))
+			return
+		}
+		topic, has := srv.cache.topics.Get(id)
+		if !has {
+			c.JSON(http.StatusNotFound, toErr("未找到帖子"))
+			return
+		}
+
+		topic.Metadata.mutex.Lock()
+		defer topic.Metadata.mutex.Unlock()
+
+		ret := make(map[string]bool, 0)
+
+		for _, pan := range srv.cache.pans.Pans {
+			ret[pan.Name()] = pan.IsExist(topic.Id)
+		}
+
+		c.JSON(http.StatusOK, ret)
+	}
+}
+
+func (srv *Server) topicPan2Operate() func(c *gin.Context) {
+	return func(c *gin.Context) {
+		id, e := strconv.Atoi(c.Param("id"))
+		if e != nil {
+			c.JSON(http.StatusBadRequest, toErr("无效的帖子 ID"))
+			return
+		}
+		topic, has := srv.cache.topics.Get(id)
+		if !has {
+			c.JSON(http.StatusNotFound, toErr("未找到帖子"))
+			return
+		}
+
+		topic.Metadata.mutex.Lock()
+		defer topic.Metadata.mutex.Unlock()
+
+		var form struct {
+			Name string `json:"name"` // 网盘名称
+			Act  string `json:"act"`  // 操作类型， "move", "delete"
+		}
+
+		if e := c.ShouldBindJSON(&form); e != nil {
+			c.JSON(http.StatusBadRequest, toErr("无效的请求数据"))
+			return
+		}
+
+		switch form.Act {
+		case "move":
+			for _, pan := range srv.cache.pans.Pans {
+				if pan.Name() != form.Name {
+					continue
+				}
+				if e := pan.Move(topic.Id); e != nil {
+					c.JSON(http.StatusInternalServerError, toErr(e.Error()))
+					return
+				}
+				break
+			}
+		case "delete":
+			for _, pan := range srv.cache.pans.Pans {
+				if pan.Name() != form.Name {
+					continue
+				}
+				if e := pan.Delete(topic.Id); e != nil {
+					c.JSON(http.StatusInternalServerError, toErr(e.Error()))
+					return
+				}
+				break
+			}
+		}
 		c.JSON(http.StatusOK, true)
 	}
 }

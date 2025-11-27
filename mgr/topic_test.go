@@ -1,7 +1,10 @@
 package mgr_test
 
 import (
+	"fmt"
+	"math/rand"
 	"regexp"
+	"runtime"
 	"testing"
 
 	"github.com/i2534/ngamm/mgr"
@@ -107,4 +110,27 @@ func TestTryFetchAssets(t *testing.T) {
 	}
 	topic := mgr.NewTopic(dir, 44741657)
 	topic.TryFetchAssets(nil)
+}
+
+func TestMeasureTopicSize(t *testing.T) {
+	dir, e := mgr.OpenRoot("../data/np2md/45670628")
+	if e != nil {
+		t.Error("Open root failed:", e)
+		return
+	}
+	var topics []*mgr.Topic
+	for i := 0; i < 10000; i++ {
+		topic := mgr.NewTopic(dir, rand.Intn(1000000))
+
+		topics = append(topics, topic)
+	}
+
+	t.Log(len(topics))
+
+	var m runtime.MemStats
+	runtime.GC()
+	runtime.ReadMemStats(&m)
+
+	// 查看实际内存使用
+	fmt.Printf("Alloc: %d KB\n", m.Alloc/1024)
 }

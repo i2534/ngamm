@@ -19,12 +19,13 @@ import (
 // use https://github.com/qjfoidnh/BaiduPCS-Go
 
 var (
-	BaiduPCSName   = "BaiduPCS-Go"
-	BdpcsOldDir    = "../../baidupcs"         //兼容文件夹
-	BdpcsEnvCfgDir = "BAIDUPCS_GO_CONFIG_DIR" // https://github.com/qjfoidnh/BaiduPCS-Go/blob/main/internal/pcsconfig/pcsconfig.go#EnvConfigDir
-	BdpcsCfgName   = "pcs_config.json"
-	BdpcsUserINI   = "user.ini"
-	BdpcsBaseDir   = "/我的资源"
+	BaiduPCSName         = "BaiduPCS-Go"
+	BdpcsOldDir          = "../../baidupcs"         //兼容文件夹
+	BdpcsEnvCfgDir       = "BAIDUPCS_GO_CONFIG_DIR" // https://github.com/qjfoidnh/BaiduPCS-Go/blob/main/internal/pcsconfig/pcsconfig.go#EnvConfigDir
+	BdpcsCfgName         = "pcs_config.json"
+	BdpcsUserINI         = "user.ini"
+	BdpcsBaseTransferDir = "/我的资源"
+	BdpcsBaseMoveDir     = "/Tidy"
 )
 
 type baiduTask struct {
@@ -34,12 +35,13 @@ type baiduTask struct {
 }
 
 type BaiduCfg struct {
-	Root      string // 工作目录
-	Enable    bool   `ini:"enable"`    // 是否启用
-	Transfer  string `ini:"transfer"`  // 转存方式: auto, manual
-	Directory string `ini:"directory"` // 转存的根目录
-	Bduss     string `ini:"bduss"`     // 百度网盘 bduss
-	Stoken    string `ini:"stoken"`    // 百度网盘 stoken
+	Root         string // 工作目录
+	Enable       bool   `ini:"enable"`    // 是否启用
+	Transfer     string `ini:"transfer"`  // 转存方式: auto, manual
+	TransferDest string `ini:"directory"` // 转存的根目录
+	MoveDest     string `ini:"move_dir"`  // 移动的根目录
+	Bduss        string `ini:"bduss"`     // 百度网盘 bduss
+	Stoken       string `ini:"stoken"`    // 百度网盘 stoken
 }
 
 type Baidu struct {
@@ -58,8 +60,11 @@ func NewBaidu(cfg BaiduCfg) *Baidu {
 		mutex: &sync.Mutex{},
 		cron:  cron.New(cron.WithLocation(TIME_LOC)),
 	}
-	if b.cfg.Directory == "" {
-		b.cfg.Directory = BdpcsBaseDir
+	if b.cfg.TransferDest == "" {
+		b.cfg.TransferDest = BdpcsBaseTransferDir
+	}
+	if b.cfg.MoveDest == "" {
+		b.cfg.MoveDest = BdpcsBaseMoveDir
 	}
 	return b
 }
@@ -142,10 +147,11 @@ func (b *Baidu) Init() error {
 				for task := range b.tasks {
 					var e error
 					var status string
-					if task.opt == PAN_OPT_DELETE {
+					switch task.opt {
+					case PAN_OPT_DELETE:
 						e = b.del(b.topicDir(task.topicId))
 						status = TRANSFER_STATUS_PENDING
-					} else if task.opt == PAN_OPT_SAVE {
+					case PAN_OPT_SAVE:
 						e = b.doTransfer(task)
 						status = TRANSFER_STATUS_SUCCESS
 					}
@@ -267,6 +273,27 @@ func (b *Baidu) safeDelete(dir string) error {
 	return b.del(dir)
 }
 
+func (b *Baidu) IsExist(topicId int) bool {
+	return b.isExist(b.topicDir(topicId))
+}
+
+// https://github.com/qjfoidnh/BaiduPCS-Go/blob/main/internal/pcscommand/cp_mv.go#RunMove
+func (b *Baidu) Move(topicId int) error {
+	src := b.topicDir(topicId)
+	dst := fmt.Sprintf("%s/%d", b.cfg.MoveDest, topicId)
+	if v, e := b.execute("mv", src, dst); e != nil {
+		return fmt.Errorf("BaiduPan: mv %s 出现问题: %s", src, e.Error())
+	} else {
+		log.Group(groupPan).Printf("BaiduPan: mv %s , %s\n", src, v)
+	}
+	return nil
+}
+
+func (b *Baidu) Delete(topicId int) error {
+	src := b.topicDir(topicId)
+	return b.del(src)
+}
+
 // https://github.com/qjfoidnh/BaiduPCS-Go/blob/main/internal/pcscommand/rm_mkdir.go#RunRemove
 func (b *Baidu) del(dir string) error {
 	if v, e := b.execute("rm", dir); e != nil {
@@ -278,7 +305,7 @@ func (b *Baidu) del(dir string) error {
 }
 
 func (b *Baidu) topicDir(topicId int) string {
-	return fmt.Sprintf("%s/%d", b.cfg.Directory, topicId)
+	return fmt.Sprintf("%s/%d", b.cfg.TransferDest, topicId)
 }
 
 // https://github.com/qjfoidnh/BaiduPCS-Go/blob/main/internal/pcscommand/transfer.go#RunShareTransfer
@@ -337,7 +364,7 @@ func (b *Baidu) Transfer(topicId int, record TransferRecord) error {
 	return nil
 }
 
-func (b *Baidu) Operate(topicId int, record *TransferRecord, opt PanOpt) error {
+func (b *Baidu) TransferOpt(topicId int, record *TransferRecord, opt PanOpt) error {
 	b.tasks <- baiduTask{
 		topicId,
 		*record,

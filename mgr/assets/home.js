@@ -410,6 +410,7 @@ function init(hasToken, ngaBase) {
             dialog.showModal();
         }
     }
+
     async function submitSched() {
         closeDialog('schedDialog');
         const id = document.getElementById('TopicID').value;

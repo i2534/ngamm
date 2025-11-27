@@ -13,8 +13,9 @@ import (
 )
 
 var (
-	QuarkUserINI = "user.ini"
-	QuarkBaseDir = "来自：分享"
+	QuarkUserINI          = "user.ini"
+	QuarkBaseTransferDest = "/来自：分享"
+	QuarkBaseMoveDest     = "/Tidy"
 )
 
 type quarkTask struct {
@@ -24,20 +25,22 @@ type quarkTask struct {
 }
 
 type QuarkCfg struct {
-	Root      string // 工作目录
-	Enable    bool   `ini:"enable"`    // 是否启用
-	Transfer  string `ini:"transfer"`  // 转存方式: auto, manual
-	Directory string `ini:"directory"` // 转存的根目录
-	Cookie    string `ini:"cookie"`    // 夸克网盘 cookie
+	Root         string // 工作目录
+	Enable       bool   `ini:"enable"`    // 是否启用
+	Transfer     string `ini:"transfer"`  // 转存方式: auto, manual
+	TransferDest string `ini:"directory"` // 转存的根目录
+	MoveDest     string `ini:"move_dir"`  // 移动的根目录
+	Cookie       string `ini:"cookie"`    // 夸克网盘 cookie
 }
 
 type QuarkPan struct {
-	cfg    QuarkCfg
-	root   string
-	quark  *Quark
-	mutex  *sync.Mutex
-	tasks  chan quarkTask
-	holder *PanHolder
+	cfg         QuarkCfg
+	root        string
+	quark       *Quark
+	mutex       *sync.Mutex
+	tasks       chan quarkTask
+	holder      *PanHolder
+	moveDestFid string
 }
 
 func NewQuarkPan(cfg QuarkCfg) *QuarkPan {
@@ -45,8 +48,11 @@ func NewQuarkPan(cfg QuarkCfg) *QuarkPan {
 		cfg:   cfg,
 		mutex: &sync.Mutex{},
 	}
-	if q.cfg.Directory == "" {
-		q.cfg.Directory = QuarkBaseDir
+	if q.cfg.TransferDest == "" {
+		q.cfg.TransferDest = QuarkBaseTransferDest
+	}
+	if q.cfg.MoveDest == "" {
+		q.cfg.MoveDest = QuarkBaseMoveDest
 	}
 	return q
 }
@@ -102,6 +108,13 @@ func (q *QuarkPan) Init() error {
 	q.quark = quark
 	log.Printf("QuarkPan: 登录成功, 用户名: %s\n", q.quark.Nickname)
 
+	if q.cfg.MoveDest != "" {
+		fids := q.quark.GetFids([]string{q.cfg.MoveDest})
+		if len(fids) > 0 {
+			q.moveDestFid = ToString(fids[0]["fid"], "")
+		}
+	}
+
 	if q.tasks == nil {
 		q.tasks = make(chan quarkTask, 99)
 		go func() {
@@ -111,12 +124,8 @@ func (q *QuarkPan) Init() error {
 				var status string
 				switch task.opt {
 				case PAN_OPT_DELETE:
-					dir := q.topicDir(task.topicId)
-					getFids := q.quark.GetFids([]string{dir})
-					if len(getFids) > 0 {
-						if toPdirFid := ToString(getFids[0]["fid"], ""); toPdirFid != "" {
-							q.quark.Delete([]string{toPdirFid})
-						}
+					if toPdirFid := q.getTopicDirFid(task.topicId); toPdirFid != "" {
+						q.quark.Delete([]string{toPdirFid})
 					}
 					status = TRANSFER_STATUS_PENDING
 				case PAN_OPT_SAVE:
@@ -151,7 +160,7 @@ type quarkFile struct {
 }
 
 func (q *QuarkPan) topicDir(topicId int) string {
-	return fmt.Sprintf("%s/%d", q.cfg.Directory, topicId)
+	return fmt.Sprintf("%s/%d", q.cfg.TransferDest, topicId)
 }
 
 func (q *QuarkPan) doTransfer(task quarkTask) error {
@@ -267,7 +276,51 @@ func (q *QuarkPan) Transfer(topicId int, record TransferRecord) error {
 	return nil
 }
 
-func (q *QuarkPan) Operate(topicId int, record *TransferRecord, opt PanOpt) error {
+// 获取 Topic 目录 FID
+func (q *QuarkPan) getTopicDirFid(topicId int) string {
+	fids := q.quark.GetFids([]string{q.topicDir(topicId)})
+	if len(fids) == 0 {
+		return ""
+	}
+	return ToString(fids[0]["fid"], "")
+}
+
+func (q *QuarkPan) IsExist(topicId int) bool {
+	return len(q.getTopicDirFid(topicId)) > 0
+}
+
+func (q *QuarkPan) Move(topicId int) error {
+	if q.moveDestFid == "" {
+		return fmt.Errorf("QuarkPan: 移动目标目录未设置")
+	}
+
+	srcFid := q.getTopicDirFid(topicId)
+	if srcFid == "" {
+		return fmt.Errorf("QuarkPan: 获取 Topic 目录 FID 失败")
+	}
+	ret, err := q.quark.Move(srcFid, q.moveDestFid)
+	if err != nil {
+		return fmt.Errorf("QuarkPan: 移动文件失败, %s", err.Error())
+	}
+	if ToFloat(ret["code"], -1) != 0 {
+		return fmt.Errorf("QuarkPan: 移动文件失败, %s", ToString(ret["message"], ""))
+	}
+	return nil
+}
+
+func (q *QuarkPan) Delete(topicId int) error {
+	srcFid := q.getTopicDirFid(topicId)
+	if srcFid == "" {
+		return fmt.Errorf("QuarkPan: 获取 Topic 目录 FID 失败")
+	}
+	ret := q.quark.Delete([]string{srcFid})
+	if ToFloat(ret["code"], -1) != 0 {
+		return fmt.Errorf("QuarkPan: 移动文件失败, %s", ToString(ret["message"], ""))
+	}
+	return nil
+}
+
+func (q *QuarkPan) TransferOpt(topicId int, record *TransferRecord, opt PanOpt) error {
 	q.tasks <- quarkTask{
 		topicId,
 		*record,
