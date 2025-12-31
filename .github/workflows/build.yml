@@ -17,6 +17,9 @@ jobs:
       matrix:
         os: [ubuntu-latest, windows-latest]
         arch: [amd64, arm64]
+        exclude: # arm64 on Windows is not supported, ngapost2md is not supported
+          - os: windows-latest
+            arch: arm64
         
     runs-on: ${{ matrix.os }}
 
@@ -46,11 +49,6 @@ jobs:
       if: matrix.arch == 'arm64' && matrix.os != 'windows-latest'
       run: |
         GOARCH=arm64 go build -ldflags "-X main.buildTime=$(date +%Y-%m-%dT%H:%M:%S) -X main.gitHash=${{ env.VERSION }}" -v -o ./build/ngamm-${{ matrix.os }}-arm64-${{ env.VERSION }}
-
-    - name: Build for arm64 on Windows
-      if: matrix.arch == 'arm64' && matrix.os == 'windows-latest'
-      run: |
-        $env:GOARCH="arm64"; $buildTime=(Get-Date -Format "yyyy-MM-ddTHH:mm:ss"); go build -ldflags "-X main.buildTime=$buildTime -X main.gitHash=${{ env.VERSION }}" -v -o ./build/ngamm-${{ matrix.os }}-arm64-${{ env.VERSION }}.exe
 
     - name: Upload Build Artifacts
       uses: actions/upload-artifact@v4
@@ -127,14 +125,12 @@ jobs:
         # 获取上一个 tag
         PREV_TAG=$(git describe --tags --abbrev=0 HEAD^ 2>/dev/null || echo "")
         if [ -z "$PREV_TAG" ]; then
-          # 如果没有上一个 tag, 只获取最近 10 条提交
-          git log -10 --pretty=format:"- %s (%h)" > CHANGELOG.md
+          # 如果没有上一个 tag, 只获取最近 5 条提交
+          git log -5 --pretty=format:"- %s (%h)" > CHANGELOG.md
         else
           # 获取从上一个 tag 到现在的提交
           git log ${PREV_TAG}..HEAD --pretty=format:"- %s (%h)" > CHANGELOG.md
         fi
-        echo "Changelog:"
-        cat CHANGELOG.md
 
     - name: Create Release
       uses: softprops/action-gh-release@v2
