@@ -1,5 +1,5 @@
 # 第一阶段：构建应用程序
-FROM golang:1.24-alpine AS builder
+FROM golang:1.25-alpine AS builder
 # 安装 git
 RUN apk add --no-cache git
 # 设置工作目录
