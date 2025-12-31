@@ -16,7 +16,8 @@ main() {
             # go run . -m data/ngapost2md -l simple
             # export LOG="simple"
             export TOKEN="abc"
-            go run . -m data/np2md/ngapost2md
+            # go run . -m data/np2md/ngapost2md
+            go run . -m data/n2md1.10/ngapost2md
             ;;
         log)
             git log --pretty=format:"- %ad (%h): %s " --date=format-local:'%Y-%m-%d %H:%M' > CHANGELOG.md

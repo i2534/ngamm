@@ -2,7 +2,11 @@ package mgr
 
 import (
 	"encoding/json"
+	"errors"
+	"fmt"
 	"io"
+	"iter"
+	"math"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -80,10 +84,36 @@ var (
 	regexAuthorIsUID *regexp.Regexp = regexp.MustCompile(`UID(\d+)`)
 	regexImageURL    *regexp.Regexp = regexp.MustCompile(`!\[img\]\(([^)]+)\)`)
 	regexVideoURL    *regexp.Regexp = regexp.MustCompile(`<video[^>]*\s+src="([^"]+)"[^>]*\s+poster="([^"]+)"`)
+	regexMediaURL    *regexp.Regexp = regexp.MustCompile(`【(.+?)：(.+?)】`) // add at 1.10.0
 )
 
+func (topic *Topic) readPostCore() (iter.Seq[string], error) {
+	root := topic.root
+	if root.IsExist(POST_MARKDOWN) {
+		seq, e := root.Lines(POST_MARKDOWN)
+		if e != nil {
+			return nil, e
+		}
+		return seq, nil
+	}
+	if root.IsExist(POST_MARKDOWN_1ST) {
+		seq, e := root.Lines(POST_MARKDOWN_1ST)
+		if e != nil {
+			return nil, e
+		}
+		return seq, nil
+	}
+	return nil, errors.New("未找到帖子")
+}
+
 func (topic *Topic) parse(nga *Client) error {
-	return topic.root.EveryLine(POST_MARKDOWN, func(line string, i int) bool {
+	seq, e := topic.readPostCore()
+	if e != nil {
+		return e
+	}
+
+	i := 0
+	for line := range seq {
 		if i == 0 {
 			topic.Title = strings.TrimLeft(line, "# ")
 		} else if strings.HasPrefix(line, "#####") {
@@ -92,7 +122,7 @@ func (topic *Topic) parse(nga *Client) error {
 				t, e := time.Parse("2006-01-02 15:04:05", m[1])
 				if e != nil {
 					log.Group(groupTopic).Println("解析时间失败:", m[1], e)
-					return false
+					break
 				}
 
 				topic.Create = FromTime(t)
@@ -141,11 +171,14 @@ func (topic *Topic) parse(nga *Client) error {
 					}
 				}
 
-				return false
+				break
 			}
 		}
-		return true
-	})
+
+		i++
+	}
+
+	return nil
 }
 
 func LoadTopic(root *ExtRoot, id int, nga *Client) (*Topic, error) {
@@ -158,7 +191,7 @@ func LoadTopic(root *ExtRoot, id int, nga *Client) (*Topic, error) {
 
 	topic := NewTopic(dir, id)
 
-	if dir.IsExist(POST_MARKDOWN) {
+	if dir.IsExist(POST_MARKDOWN) || dir.IsExist(POST_MARKDOWN_1ST) {
 		if e := topic.parse(nga); e != nil {
 			log.Group(groupTopic).Printf("解析帖子 %d 失败: %s", id, e)
 			return nil, e
@@ -169,7 +202,7 @@ func LoadTopic(root *ExtRoot, id int, nga *Client) (*Topic, error) {
 			log.Group(groupTopic).Printf("成功加载帖子 %d : <%s>", id, topic.Title)
 		}
 	} else {
-		log.Group(groupTopic).Printf("在目录 %s 中未找到 %s", dir.Name(), POST_MARKDOWN)
+		log.Group(groupTopic).Printf("在目录 %s 中未找到 %s 或 %s", dir.Name(), POST_MARKDOWN, POST_MARKDOWN_1ST)
 	}
 
 	pd, e := dir.ReadAll(PROCESS_INI)
@@ -212,13 +245,38 @@ func (t *Topic) SaveMeta() error {
 	}
 	return t.root.WriteAll(METADATA_JSON, data)
 }
-
-func (t *Topic) Content() (string, error) {
-	data, e := t.root.ReadAll(POST_MARKDOWN)
-	if e != nil {
-		return "", e
+func (t *Topic) IsSplit() bool {
+	return t.root.IsExist(POST_MARKDOWN_1ST)
+}
+func (t *Topic) ContentCore() (string, error) {
+	for _, name := range []string{POST_MARKDOWN, POST_MARKDOWN_1ST} {
+		if t.root.IsExist(name) {
+			data, e := t.root.ReadAll(name)
+			if e != nil {
+				return "", e
+			}
+			return string(data), nil
+		}
 	}
-	return string(data), nil
+	return "", errors.New("未找到帖子内容")
+}
+
+func partName(index int) string {
+	return fmt.Sprintf("post-%03d.md", index)
+}
+func (t *Topic) ContentPart(index int) (string, bool, error) {
+	if index < 0 {
+		return "", false, errors.New("无效的索引")
+	}
+	name := partName(index)
+	if t.root.IsExist(name) {
+		data, e := t.root.ReadAll(name)
+		if e != nil {
+			return "", false, e
+		}
+		return string(data), t.root.IsExist(partName(index + 1)), nil
+	}
+	return "", false, errors.New("未找到帖子内容")
 }
 
 func (t *Topic) Stop() {
@@ -296,27 +354,53 @@ func (t *Topic) fixInvalidAssets(nga *Client) {
 }
 func (t *Topic) TryFetchAssets(nga *Client) {
 	as := make(map[string]struct{})
-	t.root.EveryLine(POST_MARKDOWN, func(line string, i int) bool {
-		ims := regexImageURL.FindAllStringSubmatch(line, -1)
-		for _, m := range ims {
-			url := m[1]
-			if strings.HasPrefix(url, ATTACHMENT_BASE) {
-				as[url] = struct{}{}
+
+	root := t.root
+
+	names := make([]string, 0)
+	if root.IsExist(POST_MARKDOWN) {
+		names = append(names, POST_MARKDOWN)
+	} else if root.IsExist(POST_MARKDOWN_1ST) {
+		for i := 1; i <= math.MaxInt; i++ {
+			name := partName(i)
+			if root.IsExist(name) {
+				names = append(names, name)
+			} else {
+				break
 			}
 		}
-		vms := regexVideoURL.FindAllStringSubmatch(line, -1)
-		for _, m := range vms {
-			src := m[1]
-			poster := m[2]
-			if strings.HasPrefix(src, ATTACHMENT_BASE) {
-				as[src] = struct{}{}
+	}
+	for _, name := range names {
+		t.root.EveryLine(name, func(line string, i int) bool {
+			ims := regexImageURL.FindAllStringSubmatch(line, -1)
+			for _, m := range ims {
+				url := m[1]
+				if strings.HasPrefix(url, ATTACHMENT_BASE) {
+					as[url] = struct{}{}
+				}
 			}
-			if strings.HasPrefix(poster, ATTACHMENT_BASE) {
-				as[poster] = struct{}{}
+			vms := regexVideoURL.FindAllStringSubmatch(line, -1)
+			for _, m := range vms {
+				src := m[1]
+				poster := m[2]
+				if strings.HasPrefix(src, ATTACHMENT_BASE) {
+					as[src] = struct{}{}
+				}
+				if strings.HasPrefix(poster, ATTACHMENT_BASE) {
+					as[poster] = struct{}{}
+				}
 			}
-		}
-		return true
-	})
+			mms := regexMediaURL.FindAllStringSubmatch(line, -1)
+			for _, m := range mms {
+				url := m[2]
+				if strings.HasPrefix(url, ATTACHMENT_BASE) {
+					as[url] = struct{}{}
+				}
+			}
+			return true
+		})
+	}
+
 	// fmt.Printf("%v", as)
 
 	fixes := make(map[string]string)

@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"io"
 	"io/fs"
+	"iter"
 	"mime"
 	"net/http"
 	"os"
@@ -129,6 +130,22 @@ func (r *ExtRoot) IsExist(path ...string) bool {
 		return false
 	}
 	return true
+}
+func (r *ExtRoot) Lines(name string) (iter.Seq[string], error) {
+	f, e := r.Open(name)
+	if e != nil {
+		return nil, e
+	}
+
+	scanner := bufio.NewScanner(f)
+	return func(yield func(string) bool) {
+		defer f.Close()
+		for scanner.Scan() {
+			if !yield(scanner.Text()) {
+				return
+			}
+		}
+	}, nil
 }
 func (r *ExtRoot) EveryLine(name string, fx func(string, int) bool) error {
 	f, e := r.Open(name)

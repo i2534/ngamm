@@ -24,7 +24,7 @@ RUN if [ "$USE_LOCAL_SRC" = "true" ]; then \
 # ENV GOPROXY=https://goproxy.cn,direct
 RUN go mod download
 # 构建应用程序
-RUN go build -ldflags "-X main.buildTime=$(date +%Y-%m-%dT%H:%M:%S) -X main.gitHash=$(git describe --tags --always) -X main.logFlags=0" -v -o main .
+RUN go build -trimpath -ldflags "-s -w -X main.buildTime=$(date +%Y-%m-%dT%H:%M:%S) -X main.gitHash=$(git describe --tags --always) -X main.logFlags=0" -v -o main .
 RUN ./main -v
 
 # 第二阶段：创建运行时镜像
@@ -43,9 +43,11 @@ RUN apk add --no-cache tzdata \
     && apk del tzdata
 # 设置工作目录
 WORKDIR /app
-# 从构建阶段复制二进制文件和脚本文件
+# 从构建阶段复制二进制文件和资源文件
 COPY --from=builder /app/main ./ngamm
 COPY --from=builder /app/assets/pan-config.ini ./pan-config.ini
+COPY --from=builder /app/assets/attachment.ini ./attachment.ini
+COPY --from=builder /app/ngapost2md.version ./ngapost2md.version
 COPY entrypoint.sh .
 # 设置环境变量
 # 访问 Token
