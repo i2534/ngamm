@@ -76,6 +76,8 @@ start_application() {
     cp "$dir_np2md/ngapost2md" "$dir_data/"
     # 复制配置文件, 用户可能会在外部修改配置文件
     cp -n "$dir_np2md/config.ini" "$dir_data/"
+    # 复制附件配置文件
+    cp -n "./attachment.ini" "$dir_data/attachment.ini"
 
     cd "$dir_work"
     chmod +x ngamm

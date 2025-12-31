@@ -348,17 +348,27 @@ func (t *Topic) ParseTransferRecord() ([]*TransferRecord, error) {
 	floor := 0
 	pwd := ""
 	var record *TransferRecord
-	e := t.root.EveryLine(POST_MARKDOWN, func(line string, _ int) bool {
+
+	seq, e := t.readPostCore()
+	if e != nil {
+		return nil, e
+	}
+	for line := range seq {
 		line = strings.TrimSpace(line)
 
 		m := panURLRegex.FindStringSubmatch(line)
 		if len(m) > 1 {
 			url := strings.TrimSpace(m[1])
 			// 去除重复的, 因为可能有引用
+			exists := false
 			for _, rec := range records {
 				if rec.URL == url {
-					return true
+					exists = true
+					break
 				}
+			}
+			if exists {
+				continue
 			}
 			record = &TransferRecord{
 				URL: url,
@@ -380,10 +390,9 @@ func (t *Topic) ParseTransferRecord() ([]*TransferRecord, error) {
 			floor++
 		}
 		if floor > 3 {
-			return false
+			break
 		}
-		return true
-	})
+	}
 
 	if pwd != "" {
 		pwd = html.UnescapeString(pwd)
@@ -453,7 +462,7 @@ func (srv *Server) topicPanRecords() func(c *gin.Context) {
 		defer topic.Metadata.mutex.Unlock()
 
 		if records, e := topic.loadPanRecords(); e != nil {
-			c.JSON(http.StatusInternalServerError, e.Error())
+			c.JSON(http.StatusNotFound, toErr(e.Error()))
 		} else {
 			// 处理下旧数据
 			changed := false

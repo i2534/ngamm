@@ -71,6 +71,7 @@ func (srv *Server) regHandlers() {
 			vg.Use(srv.viewMiddleware())
 		}
 		vg.GET("/:token/:id", srv.viewTopic())
+		vg.POST("/:token/:id", srv.viewTopicPart())
 		vg.GET("/:token/:id/:name", srv.viewTopicRes())
 		vg.DELETE("/:token/:id", srv.topicForceReload())
 	}
@@ -534,12 +535,14 @@ type viewTplData struct {
 	BaseUrl           string
 	Markdown          template.HTML
 	Version           string
+	HasMoreContent    bool
 	ReplaceAttachment bool
 }
 
 func (srv *Server) viewTopic() func(c *gin.Context) {
 	return func(c *gin.Context) {
 		title, markdown := "", ""
+		more := false
 
 		id, e := strconv.Atoi(c.Param("id"))
 		if e != nil {
@@ -550,7 +553,8 @@ func (srv *Server) viewTopic() func(c *gin.Context) {
 				title = "未找到帖子"
 			} else {
 				title = topic.Title
-				markdown, e = topic.Content()
+				more = topic.IsSplit()
+				markdown, e = topic.ContentCore()
 				if e != nil {
 					title = "读取帖子失败"
 				} else {
@@ -576,12 +580,54 @@ func (srv *Server) viewTopic() func(c *gin.Context) {
 			BaseUrl:           srv.nga.BaseURL(),
 			Markdown:          template.HTML(markdown),
 			Version:           srv.Cfg.GitHash,
+			HasMoreContent:    more,
 			ReplaceAttachment: srv.nga.attachCfg.Base.AutoReplace,
 		}
 		c.Header("Content-Type", HTML_HEADER)
 		if e := tmpl.Execute(c.Writer, data); e != nil {
 			c.String(http.StatusInternalServerError, "渲染查看页面失败")
 		}
+	}
+}
+
+func (srv *Server) viewTopicPart() func(c *gin.Context) {
+	return func(c *gin.Context) {
+		id, e := strconv.Atoi(c.Param("id"))
+		if e != nil {
+			c.JSON(http.StatusBadRequest, toErr("无效的帖子 ID"))
+			return
+		}
+		topic, has := srv.cache.topics.Get(id)
+		if !has {
+			c.JSON(http.StatusNotFound, toErr("未找到帖子"))
+			return
+		}
+
+		var body struct {
+			Index int `json:"index"`
+		}
+		if e := c.ShouldBindJSON(&body); e != nil {
+			c.JSON(http.StatusBadRequest, toErr("无效的请求数据"))
+			return
+		}
+		if body.Index < 1 {
+			c.JSON(http.StatusBadRequest, toErr("无效的索引"))
+			return
+		}
+
+		markdown, hasNext, e := topic.ContentPart(body.Index)
+		if e != nil {
+			c.JSON(http.StatusInternalServerError, toErr("读取帖子失败: "+e.Error()))
+			return
+		}
+
+		c.JSON(http.StatusOK, struct {
+			Markdown string `json:"markdown"`
+			Next     bool   `json:"next"`
+		}{
+			Markdown: markdown,
+			Next:     hasNext,
+		})
 	}
 }
 

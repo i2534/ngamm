@@ -1,4 +1,4 @@
-function render(ngaBase, id, token, content, replaceAttachment) {
+function render(ngaBase, id, token, content, replaceAttachment, hasMoreContent) {
     const origin = window.location.origin;
     const baseUrl = `${origin}/view/${token}/${id}/`;
     const ngaPostBase = `${ngaBase}/read.php?tid=`;
@@ -91,32 +91,65 @@ function render(ngaBase, id, token, content, replaceAttachment) {
         if (title && title !== '') {
             extra += ` title="${title}"`;
         }
-        extra += ` ${attrPoster}="${fixSrc(poster || '')}"`;
+        if (poster && poster !== '') {
+            extra += ` ${attrPoster}="${fixSrc(poster)}"`;
+        }
         return `<video ${attrSrc}="${fixSrc(src)}"${extra} controls onerror="tryReloadVideo(this)"></video>`;
     }
-
-    const extensions = [{
-        name: 'video',
-        level: 'inline',
-        start(src) {
-            return src.indexOf('<video');
-        },
-        tokenizer(src) {
-            const match = src.match(/^.*<video[^>]*src="([^"]+)"[^>]*poster="([^"]+)"[^>]*>.*<\/video>.*$/);
-            if (match) {
-                return {
-                    type: 'video',
-                    raw: match[0],
-                    src: match[1],
-                    poster: match[2],
-                };
+    function makeAudio(src, title) {
+        return `<audio ${attrSrc}="${fixSrc(src)}" title="${title}" controls onerror="tryReloadVideo(this)"></audio>`;
+    }
+    const extensions = [
+        {
+            name: 'video',
+            level: 'inline',
+            start(src) {
+                return src.indexOf('<video');
+            },
+            tokenizer(src) {
+                const match = src.match(/^.*<video[^>]*src="([^"]+)"[^>]*poster="([^"]+)"[^>]*>.*<\/video>.*$/);
+                if (match) {
+                    return {
+                        type: 'video',
+                        raw: match[0],
+                        src: match[1],
+                        poster: match[2],
+                    };
+                }
+                return false;
+            },
+            renderer({ src, poster }) {
+                return makeVideo(src, '', poster || '');
             }
-            return false;
         },
-        renderer({ src, poster }) {
-            return makeVideo(src, '', poster || '');
+        {
+            name: 'media',
+            level: 'inline',
+            start(src) {
+                return src.indexOf('【');
+            },
+            tokenizer(src) {
+                const match = src.match(/^.*【(.+?)：(.+?)】.*$/);
+                if (match) {
+                    return {
+                        type: 'media',
+                        raw: match[0],
+                        mt: match[1],
+                        src: match[2],
+                    };
+                }
+                return false;
+            },
+            renderer({ mt, src }) {
+                if (mt === '音频') {
+                    return makeAudio(src, '');
+                } else if (mt === '视频') {
+                    return makeVideo(src, '', '');
+                }
+                return makeLink(src, '');
+            }
         }
-    }];
+    ];
     marked.use({ renderer, extensions });
 
     function tryReloadImage(img) {
@@ -200,8 +233,12 @@ function render(ngaBase, id, token, content, replaceAttachment) {
         video.onerror = null; // 防止进入无限循环
 
         const floor = findFloor(video);
-        video.poster = makeAttachSrc(video.poster, floor);
-        video.src = makeAttachSrc(video.src, floor);
+        if (video.poster) {
+            video.poster = makeAttachSrc(video.poster, floor);
+        }
+        if (video.src) {
+            video.src = makeAttachSrc(video.src, floor);
+        }
     }
     // 修正引用, > 会被处理成 blockquote, 但 [quote] 需要自行处理
     function fixQuote(html) {
@@ -575,15 +612,21 @@ function render(ngaBase, id, token, content, replaceAttachment) {
     }
 
     async function processNetPan(parent) {
-        const pans = await fetch(`${origin}/pan/${token}/${id}?${Date.now()}`)
-            .then(r => {
-                if (r.ok) {
-                    return r.json();
-                } else {
-                    console.log(`请求网盘数据失败: ${r.statusText}`);
+        let pans = [];
+        try {
+            pans = await fetch(`${origin}/pan/${token}/${id}?${Date.now()}`)
+                .then(r => {
+                    if (r.ok) {
+                        return r.json();
+                    } else {
+                        console.log(`请求网盘数据失败`);
+                        return [];
+                    }
+                }).catch(e => {
+                    console.error('请求网盘数据失败:', e);
                     return [];
-                }
-            });
+                });
+        } catch (e) { }
         const sns = parent.querySelectorAll('span.netpan');
         for (const e of sns) {
             e.innerHTML = '';
@@ -686,6 +729,148 @@ function render(ngaBase, id, token, content, replaceAttachment) {
             });
     }
 
+    function appendContent(container, content, loading) {
+        const template = document.createElement('template');
+        let html = content;
+        [fixQuote, fixAttach, fixComment, fixCode, fixEmoji].forEach(fix => {
+            html = fix(html);
+        })
+        // 渲染
+        html = marked.parse(html);
+        html = fixLink(html);
+        template.innerHTML = html;
+        const frag = template.content;
+
+        // 监视所有 img, video 和 audio 元素的可见性
+        frag.querySelectorAll('img, video, audio')
+            .forEach(e => {
+                if (vwm) {
+                    e.classList.add('hide-media');
+                }
+                if (e.tagName.toLowerCase() === 'img') {
+                    e.src = loading;
+                    e.addEventListener('load', function () { // 图片加载完毕后更新宽度
+                        e.style.width = e.naturalWidth + 'px';
+                    });
+                } else {
+                    e.poster = loading;
+                }
+                observer.observe(e)
+            });
+
+        // 为所有 code 元素添加双击事件监听器
+        frag.querySelectorAll('code').forEach(e => {
+            e.addEventListener('dblclick', () => {
+                const range = document.createRange();
+                range.selectNodeContents(e);
+                const selection = window.getSelection();
+                selection.removeAllRanges();
+                selection.addRange(range);
+            });
+        });
+
+        // 限制跳转楼层的值
+        const floors = Array.from(frag.querySelectorAll('h5[floor]'))
+            .map(e => parseInt(e.getAttribute('floor')));
+        const floorInput = document.querySelector('#floorInput');
+        if (floors.length > 0) {
+            const maxFloor = Math.max(...floors);
+            if (maxFloor > parseInt(floorInput.max || 0)) {
+                floorInput.max = maxFloor;
+            }
+        }
+        if (!floorInput.dataset.bindInput) {
+            floorInput.dataset.bindInput = 'true';
+            floorInput.addEventListener('input', () => {
+                const value = parseInt(floorInput.value) || 0;
+                if (value < floorInput.min) {
+                    floorInput.value = floorInput.min;
+                } else if (value > floorInput.max) {
+                    floorInput.value = floorInput.max;
+                }
+            });
+        }
+
+        // 打开层主信息
+        frag.querySelectorAll('.floor>.author').forEach(e => {
+            let uid = e.getAttribute('uid');
+            let href;
+            if (uid && uid !== '') {
+                if (uid.startsWith('(')) {
+                    uid = uid.substring(1);
+                }
+                if (uid.endsWith(')')) {
+                    uid = uid.substring(0, uid.length - 1);
+                }
+                href = `${ngaBase}/nuke.php?func=ucp&uid=${uid.trim()}`;
+            } else {
+                href = `${ngaBase}/nuke.php?func=ucp&username=${GBK.URI.encodeURIComponent(e.textContent)}`;
+            }
+
+            const a = document.createElement('a');
+            a.href = href;
+            a.target = '_blank';
+            a.textContent = e.textContent;
+            a.className = e.className;
+            if (uid && uid !== '') {
+                a.setAttribute('uid', uid);
+            }
+
+            e.replaceWith(a);
+        });
+
+        container.appendChild(frag);
+    }
+
+    // 解析更多内容
+    function loadMoreContent(container, loadImg) {
+        if (hasMoreContent + '' != 'true') {
+            return;
+        }
+        // 当滚动到页面底部时, 加载更多内容
+        let index = 2;
+        let loading = false;
+        let task = null;
+        let noMore = 0;
+
+        const load = () => {
+            if (loading) return;
+            if (window.innerHeight + window.scrollY < document.body.offsetHeight - 50) return;
+            if (Date.now() - noMore < 5 * 60 * 1000) return; // 5 分钟内不再加载
+
+            loading = true;
+            fetch(`${origin}/view/${token}/${id}`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({ index })
+            })
+                .then(r => r.json())
+                .then(data => {
+                    if (data.markdown) {
+                        let md = data.markdown.trim();
+                        if (md.startsWith('----')) {
+                            md = md.substring(4).trim();
+                        }
+                        appendContent(container, md, loadImg);
+                        index++;
+                    }
+                    if (!data.next) {
+                        noMore = Date.now();
+                    }
+                })
+                .finally(() => {
+                    loading = false;
+                });
+        };
+
+        window.addEventListener('scroll', () => {
+            if (task) clearTimeout(task);
+            task = setTimeout(load, 150);
+        });
+    }
+
     window.addEventListener('load', () => {
         if (vwm) {
             const btn = document.querySelector('#toggleViewMedia');
@@ -695,86 +880,11 @@ function render(ngaBase, id, token, content, replaceAttachment) {
 
         const c = document.querySelector('#content');
         if (c) {
-            const loading = URL.createObjectURL(new Blob([document.querySelector('#loading').innerHTML], { type: 'image/svg+xml' }));
+            const loadImg = URL.createObjectURL(new Blob([document.querySelector('#loading').innerHTML], { type: 'image/svg+xml' }));
 
-            let html = content;
-            [fixQuote, fixAttach, fixComment, fixCode, fixEmoji].forEach(fix => {
-                html = fix(html);
-            })
-            // 渲染
-            html = marked.parse(html);
-            html = fixLink(html);
-            c.innerHTML = html;
+            appendContent(c, content, loadImg);
 
-            // 监视所有 img 和 video 元素的可见性
-            c.querySelectorAll('img, video')
-                .forEach(e => {
-                    if (vwm) {
-                        e.classList.add('hide-media');
-                    }
-                    if (e.tagName.toLowerCase() === 'img') {
-                        e.src = loading;
-                        e.addEventListener('load', function () { // 图片加载完毕后更新宽度
-                            e.style.width = e.naturalWidth + 'px';
-                        });
-                    } else {
-                        e.poster = loading;
-                    }
-                    observer.observe(e)
-                });
-
-            // 为所有 code 元素添加双击事件监听器
-            c.querySelectorAll('code').forEach(e => {
-                e.addEventListener('dblclick', () => {
-                    const range = document.createRange();
-                    range.selectNodeContents(e);
-                    const selection = window.getSelection();
-                    selection.removeAllRanges();
-                    selection.addRange(range);
-                });
-            });
-
-            // 限制跳转楼层的值
-            const floors = Array.from(c.querySelectorAll('h5[floor]'))
-                .map(e => parseInt(e.getAttribute('floor')));
-            const floorInput = document.querySelector('#floorInput');
-            floorInput.max = Math.max(...floors);
-            floorInput.addEventListener('input', () => {
-                const value = parseInt(floorInput.value);
-                if (value < floorInput.min) {
-                    floorInput.value = floorInput.min;
-                } else if (value > floorInput.max) {
-                    floorInput.value = floorInput.max;
-                }
-            });
-
-            // 打开层主信息
-            c.querySelectorAll('.floor>.author').forEach(e => {
-                let uid = e.getAttribute('uid');
-                let href;
-                if (uid && uid !== '') {
-                    if (uid.startsWith('(')) {
-                        uid = uid.substring(1);
-                    }
-                    if (uid.endsWith(')')) {
-                        uid = uid.substring(0, uid.length - 1);
-                    }
-                    href = `${ngaBase}/nuke.php?func=ucp&uid=${uid.trim()}`;
-                } else {
-                    href = `${ngaBase}/nuke.php?func=ucp&username=${GBK.URI.encodeURIComponent(e.textContent)}`;
-                }
-
-                const a = document.createElement('a');
-                a.href = href;
-                a.target = '_blank';
-                a.textContent = e.textContent;
-                a.className = e.className;
-                if (uid && uid !== '') {
-                    a.setAttribute('uid', uid);
-                }
-
-                e.replaceWith(a);
-            });
+            loadMoreContent(c, loadImg);
 
             processNetPan(c);
         }

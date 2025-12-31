@@ -20,8 +20,9 @@ import (
 )
 
 var (
-	DIR_RECYCLE_BIN   = "recycles" // 回收站目录
-	POST_MARKDOWN     = "post.md"
+	DIR_RECYCLE_BIN   = "recycles"    // 回收站目录
+	POST_MARKDOWN     = "post.md"     // no split
+	POST_MARKDOWN_1ST = "post-001.md" // split
 	PROCESS_INI       = "process.ini"
 	METADATA_JSON     = "metadata.json"
 	ASSETSA_JSON      = "assets.json"

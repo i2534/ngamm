@@ -204,7 +204,7 @@ type Client struct {
 	lock      *sync.Mutex // program exec lock
 	fixCh     chan fixRecord
 	attachCfg *AttachConfig // 附件下载配置
-	useNetPic bool
+	useNetPic bool          // 是否使用网络图片
 }
 
 func InitNGA(global Config) (*Client, error) {
@@ -259,6 +259,7 @@ func InitNGA(global Config) (*Client, error) {
 
 	fp := filepath.Join(dir, NGA_CFG)
 	if !IsExist(fp) {
+		log.Println("ngapost2md 配置文件不存在, 生成默认配置文件")
 		client.execute([]string{"--gen-config-file"}, dir)
 	}
 	cfg, e := ini.Load(fp)
@@ -287,7 +288,7 @@ func InitNGA(global Config) (*Client, error) {
 
 	updateConfig(cfg, fp)
 
-	client.useNetPic = cfg.Section("post").Key("use_network_pic_url").MustBool(false)
+	client.useNetPic = cfg.Section("post").Key("use_network_media_url").MustBool(false)
 
 	if topics != dir { // 帖子目录和程序目录不一致, 复制配置文件到帖子目录
 		log.Printf("复制配置文件到帖子目录: %s\n", topics)
@@ -413,33 +414,50 @@ func InitReqClient() *req.Client {
 func updateConfig(cfg *ini.File, path string) {
 	changed := false
 
+	targetVersion := "1.10.0"
+
 	secCfg := cfg.Section("config")
-	if secCfg.Key("version").String() != "1.8.0" {
-		log.Println("更新配置文件到版本 1.8.0")
-		secCfg.Key("version").SetValue("1.8.0")
+	if secCfg.Key("version").String() != targetVersion {
+		log.Println("更新配置文件到版本", targetVersion)
+		secCfg.Key("version").SetValue(targetVersion)
 
 		changed = true
 	}
 
-	secPost := cfg.Section("post")
-	if secPost.Key("use_network_pic_url").String() == "" {
-		log.Println("添加 post.use_network_pic_url 配置项")
-		key, e := secPost.NewKey("use_network_pic_url", "True")
-		if e != nil {
-			log.Println("添加 post.use_network_pic_url 配置项失败:", e.Error())
-		} else {
-			key.Comment = "[#109]是否直接使用图片的在线链接，而不是将图片资源下载到本地后做本地图片引用。默认值False（不启用）。"
-			changed = true
-		}
-	} else if secPost.Key("use_network_pic_url").String() == "False" {
-		log.Println("修改 post.use_network_pic_url 配置项为 True")
-		secPost.Key("use_network_pic_url").SetValue("True")
-		changed = true
+	// for 1.8.0
+	c, e := changeConfigValue(cfg, "post", "use_network_pic_url", "True") // 需要获得原始地址以方便重试
+	if e != nil {
+		log.Println("修改 post.use_network_pic_url 配置项失败:", e.Error())
 	}
+	changed = changed || c
+
+	// for 1.10.0
+	c, e = changeConfigValue(cfg, "post", "use_network_media_url", "True") // 需要获得原始地址以方便重试
+	if e != nil {
+		log.Println("修改 post.use_network_media_url 配置项失败:", e.Error())
+	}
+	changed = changed || c
 
 	if changed {
 		cfg.SaveTo(path)
 	}
+}
+
+func changeConfigValue(cfg *ini.File, section, key, value string) (bool, error) {
+	sec := cfg.Section(section)
+	if !sec.HasKey(key) {
+		log.Println("添加", section, key, "配置项")
+		_, e := sec.NewKey(key, value)
+		if e != nil {
+			return false, e
+		}
+	}
+	if sec.Key(key).String() != value {
+		log.Println("修改", section, key, "配置项为", value)
+		sec.Key(key).SetValue(value)
+		return true, nil
+	}
+	return false, nil
 }
 
 func isEnclosed(s string, start, end rune) bool {
@@ -472,11 +490,11 @@ func (c *Client) version() (string, error) {
 	if e != nil {
 		return "", e
 	}
-	lines := strings.Split(out, "\n")
-	if len(lines) > 0 {
-		line := strings.TrimSpace(lines[0])
-		if after, ok := strings.CutPrefix(line, "ngapost2md"); ok {
-			return strings.TrimSpace(after), nil
+	lines := strings.SplitSeq(out, "\n")
+	regex := regexp.MustCompile(`ngapost2md\s+(\d+\.\d+\.\d+)`)
+	for line := range lines {
+		if matches := regex.FindStringSubmatch(line); len(matches) > 1 {
+			return matches[1], nil
 		}
 	}
 	return "", errors.New("无输出")
