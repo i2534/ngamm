@@ -84,8 +84,28 @@ for dir in */; do
     # 重命名可执行文件
     if [ "$platform" = "windows" ]; then
         mv "$dir"/ngamm-*.exe "$dir/ngamm.exe" 2>/dev/null || true
+
+        cat > "$dir/run.bat" << 'EOF'
+@echo off
+chcp 65001 >nul
+title ngamm
+cd /d "%~dp0"
+echo Starting ngamm...
+ngamm.exe -p 5842 -m data/ngapost2md
+pause
+EOF
     else
         mv "$dir"/ngamm-* "$dir/ngamm" 2>/dev/null || true
+
+        cat > "$dir/run.sh" << 'EOF'
+#!/bin/bash
+cd "$(dirname "$0")"
+chmod +x ngamm
+[ -f data/ngapost2md ] && chmod +x data/ngapost2md
+echo "Starting ngamm..."
+./ngamm -p 5842 -m data/ngapost2md
+EOF
+        chmod +x "$dir/run.sh"
     fi
     
     dir_data="$dir/data"
