@@ -24,7 +24,7 @@ RUN if [ "$USE_LOCAL_SRC" = "true" ]; then \
 # ENV GOPROXY=https://goproxy.cn,direct
 RUN go mod download
 # 构建应用程序
-RUN go build -ldflags "-X main.buildTime=$(date +%Y-%m-%dT%H:%M:%S) -X main.gitHash=$(git describe --tags --always) -X main.logFlags=0" -v -o main .
+RUN go build -trimpath -ldflags "-s -w -X main.buildTime=$(date +%Y-%m-%dT%H:%M:%S) -X main.gitHash=$(git describe --tags --always) -X main.logFlags=0" -v -o main .
 RUN ./main -v
 
 # 第二阶段：创建运行时镜像
