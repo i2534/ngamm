@@ -21,7 +21,16 @@ setup_directories() {
 
 # 获取ngapost2md二进制文件
 fetch_ngapost2md() {
-    local bin_url="https://github.com/ludoux/ngapost2md/releases/download/1.8.2/ngapost2md-NEO_1.8.2-linux-amd64.tar.gz"
+    local version_file="$dir_work/ngapost2md.version"
+    local version
+    if [ -f "$version_file" ]; then
+        version=$(cat "$version_file")
+    else
+        version="1.10.0"
+        echo "版本文件不存在, 使用默认版本 $version"
+    fi
+    
+    local bin_url="https://github.com/ludoux/ngapost2md/releases/download/${version}/ngapost2md-NEO_${version}-linux-amd64.tar.gz"
     echo "正在从 $bin_url 获取 ngapost2md ..."
     local tmp=ngapost2md.bin
     local dir=$dir_np2md
@@ -32,7 +41,7 @@ fetch_ngapost2md() {
     tar -zxf $tmp -C .
     rm -f win_*
     rm -f $tmp
-    echo "获取 ngapost2md 完成。"
+    echo "获取 ngapost2md $version 完成。"
 
     cd "$old"
 }
