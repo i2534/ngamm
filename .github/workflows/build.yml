@@ -2,10 +2,9 @@ name: Build and Deploy
 
 on:
   push:
-    branches: [ "main" ]
-    tags: [ "v*" ]
   pull_request:
     branches: [ "main" ]
+  workflow_dispatch:
 
 jobs:
   build:
@@ -24,7 +23,7 @@ jobs:
     - name: Set up Go
       uses: actions/setup-go@v4
       with:
-        go-version: '1.24'
+        go-version: '1.25'
 
     - name: Get version
       id: get_version
@@ -57,42 +56,42 @@ jobs:
         path: ./build/
 
     - name: Build Docker image - ngamm
-      if: matrix.arch == 'amd64' && matrix.os != 'windows-latest'
+      if: matrix.arch == 'amd64' && matrix.os != 'windows-latest' && github.ref == 'refs/heads/main'
       run: |
         docker build -t ngamm:${{ env.VERSION }} .
 
     - name: Build Docker image - ngamm-pan
-      if: matrix.arch == 'amd64' && matrix.os != 'windows-latest'
+      if: matrix.arch == 'amd64' && matrix.os != 'windows-latest' && github.ref == 'refs/heads/main'
       run: |
         docker build --build-arg NET_PAN="true" -t ngamm-pan:${{ env.VERSION }} .
 
     - name: Log in to Docker Hub
-      if: matrix.arch == 'amd64' && matrix.os != 'windows-latest'
+      if: matrix.arch == 'amd64' && matrix.os != 'windows-latest' && github.ref == 'refs/heads/main'
       uses: docker/login-action@v2
       with:
         username: ${{ secrets.DOCKER_USERNAME }}
         password: ${{ secrets.DOCKER_PASSWORD }}
 
     - name: Push ngamm to Docker Hub with version tag
-      if: matrix.arch == 'amd64' && matrix.os != 'windows-latest'
+      if: matrix.arch == 'amd64' && matrix.os != 'windows-latest' && github.ref == 'refs/heads/main'
       run: |
         docker tag ngamm:${{ env.VERSION }} ${{ secrets.DOCKER_USERNAME }}/ngamm:${{ env.VERSION }}
         docker push ${{ secrets.DOCKER_USERNAME }}/ngamm:${{ env.VERSION }}
 
     - name: Push ngamm to Docker Hub with latest tag
-      if: matrix.arch == 'amd64' && matrix.os != 'windows-latest'
+      if: matrix.arch == 'amd64' && matrix.os != 'windows-latest' && github.ref == 'refs/heads/main'
       run: |
         docker tag ngamm:${{ env.VERSION }} ${{ secrets.DOCKER_USERNAME }}/ngamm:latest
         docker push ${{ secrets.DOCKER_USERNAME }}/ngamm:latest
         
     - name: Push ngamm-pan to Docker Hub with version tag
-      if: matrix.arch == 'amd64' && matrix.os != 'windows-latest'
+      if: matrix.arch == 'amd64' && matrix.os != 'windows-latest' && github.ref == 'refs/heads/main'
       run: |
         docker tag ngamm-pan:${{ env.VERSION }} ${{ secrets.DOCKER_USERNAME }}/ngamm-pan:${{ env.VERSION }}
         docker push ${{ secrets.DOCKER_USERNAME }}/ngamm-pan:${{ env.VERSION }}
 
     - name: Push ngamm-pan to Docker Hub with latest tag
-      if: matrix.arch == 'amd64' && matrix.os != 'windows-latest'
+      if: matrix.arch == 'amd64' && matrix.os != 'windows-latest' && github.ref == 'refs/heads/main'
       run: |
         docker tag ngamm-pan:${{ env.VERSION }} ${{ secrets.DOCKER_USERNAME }}/ngamm-pan:latest
         docker push ${{ secrets.DOCKER_USERNAME }}/ngamm-pan:latest
@@ -100,31 +99,46 @@ jobs:
   release:
     needs: build
     runs-on: ubuntu-latest
-    if: startsWith(github.ref, 'refs/tags/v')
+    if: github.ref == 'refs/heads/main'
     
     steps:
+    - uses: actions/checkout@v4
+      with:
+        fetch-depth: 0
+        
     - name: Download all artifacts
       uses: actions/download-artifact@v4
       with:
         path: ./artifacts
         
-    - name: Get version from tag
-      run: echo "VERSION=${GITHUB_REF#refs/tags/}" >> $GITHUB_ENV
+    - name: Get version
+      run: echo "VERSION=$(git describe --tags --always)" >> $GITHUB_ENV
 
     - name: Create zip packages
       run: |
-        cd artifacts
-        for dir in */; do
-          dir_name="${dir%/}"
-          zip -r "../${dir_name}.zip" "$dir"
-        done
-        cd ..
-        ls -la *.zip
+        chmod +x ./package.sh
+        ./package.sh ${{ env.VERSION }}
+
+    - name: Generate changelog
+      run: |
+        # 获取上一个 tag
+        PREV_TAG=$(git describe --tags --abbrev=0 HEAD^ 2>/dev/null || echo "")
+        if [ -z "$PREV_TAG" ]; then
+          # 如果没有上一个 tag, 只获取最近 10 条提交
+          git log -10 --pretty=format:"- %s (%h)" > CHANGELOG.md
+        else
+          # 获取从上一个 tag 到现在的提交
+          git log ${PREV_TAG}..HEAD --pretty=format:"- %s (%h)" > CHANGELOG.md
+        fi
+        echo "Changelog:"
+        cat CHANGELOG.md
 
     - name: Create Release
       uses: softprops/action-gh-release@v1
       with:
+        tag_name: ${{ env.VERSION }}
         name: Release ${{ env.VERSION }}
+        body_path: CHANGELOG.md
         draft: false
         prerelease: false
         files: |
