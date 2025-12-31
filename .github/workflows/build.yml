@@ -100,7 +100,7 @@ jobs:
   release:
     needs: build
     runs-on: ubuntu-latest
-    # if: github.ref == 'refs/heads/main'
+    if: github.ref == 'refs/heads/main'
     
     steps:
     - uses: actions/checkout@v4
@@ -138,7 +138,7 @@ jobs:
         tag_name: ${{ env.VERSION }}
         name: Release ${{ env.VERSION }}
         body_path: CHANGELOG.md
-        draft: true
+        draft: false
         prerelease: false
         files: |
           *.zip
