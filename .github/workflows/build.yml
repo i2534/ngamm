@@ -33,7 +33,7 @@ jobs:
 
     - name: Get version
       id: get_version
-      run: echo "VERSION=$(git describe --tags --always)" >> $GITHUB_ENV
+      run: echo "VERSION=$(cat ngapost2md.version)-$(git rev-parse --short HEAD)" >> $GITHUB_ENV
         
     - name: Build for amd64 on Linux
       if: matrix.arch == 'amd64' && matrix.os != 'windows-latest'
@@ -113,7 +113,7 @@ jobs:
         path: ./artifacts
         
     - name: Get version
-      run: echo "VERSION=$(git describe --tags --always)" >> $GITHUB_ENV
+      run: echo "VERSION=$(cat ngapost2md.version)-$(git rev-parse --short HEAD)" >> $GITHUB_ENV
 
     - name: Create zip packages
       run: |
