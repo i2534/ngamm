@@ -91,7 +91,7 @@ chcp 65001 >nul
 title ngamm
 cd /d "%~dp0"
 echo Starting ngamm...
-ngamm.exe -p 5842 -m data/ngapost2md
+ngamm.exe -p 5842 -m data/ngapost2md.exe
 pause
 EOF
     else
