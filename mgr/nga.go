@@ -189,6 +189,8 @@ type fixRecord struct {
 	fixes map[string]string // 需要修复的资产文件名和对应的内容
 }
 
+const fixChCapacity = 5000
+
 type Client struct {
 	root      *ExtRoot
 	dir       string // root 的绝对路径
@@ -203,6 +205,7 @@ type Client struct {
 	srv       *Server
 	lock      *sync.Mutex // program exec lock
 	fixCh     chan fixRecord
+	reqClient *req.Client   // 复用连接池，避免每次请求新建客户端
 	attachCfg *AttachConfig // 附件下载配置
 	useNetPic bool          // 是否使用网络图片
 }
@@ -244,7 +247,7 @@ func InitNGA(global Config) (*Client, error) {
 		users:   newUsers(userDir),
 		cron:    cron.New(cron.WithLocation(TIME_LOC)),
 		lock:    &sync.Mutex{},
-		fixCh:   make(chan fixRecord, 999999),
+		fixCh:   make(chan fixRecord, fixChCapacity),
 	}
 
 	version, e := client.version()
@@ -311,6 +314,16 @@ func InitNGA(global Config) (*Client, error) {
 	if e != nil {
 		log.Printf("加载附件配置文件失败: %s\n", e.Error())
 	}
+
+	timeout := 10 * time.Second
+	if client.attachCfg != nil && client.attachCfg.Base.Timeout > 0 {
+		timeout = client.attachCfg.Base.Timeout
+	}
+	client.reqClient = req.C().
+		SetTimeout(timeout).
+		SetCommonRetryCount(3).
+		SetCommonRetryBackoffInterval(1*time.Second, 3*time.Second).
+		DisableAutoDecode()
 
 	client.cron.Start()
 
@@ -399,16 +412,6 @@ func LoadAttachmentConfig(filepath string) (*AttachConfig, error) {
 	}
 
 	return config, nil
-}
-
-func InitReqClient() *req.Client {
-	// 初始化 req 客户端
-	client := req.C().
-		SetTimeout(10*time.Second).
-		SetCommonRetryCount(3).
-		SetCommonRetryBackoffInterval(1*time.Second, 3*time.Second).
-		DisableAutoDecode()
-	return client
 }
 
 func updateConfig(cfg *ini.File, path string) {
@@ -554,7 +557,7 @@ func (c *Client) execute(args []string, dir string) (string, error) {
 func (c *Client) getHTML(url string) (string, error) {
 	log.Group(groupNGA).Printf("请求 %s\n", url)
 
-	resp, e := InitReqClient().
+	resp, e := c.reqClient.
 		SetUserAgent(c.GetUA()).
 		R().
 		SetHeader("Cookie", "ngaPassportUid="+c.uid+"; ngaPassportCid="+c.cid).
@@ -855,9 +858,10 @@ func (c *Client) AddFixAsset(topic *Topic, fixes map[string]string) {
 	if topic.IsClosed() {
 		return
 	}
-	c.fixCh <- fixRecord{
-		topic: topic,
-		fixes: fixes,
+	select {
+	case c.fixCh <- fixRecord{topic: topic, fixes: fixes}:
+	default:
+		log.Printf("附件修复队列已满，丢弃帖子 %d 的 %d 个修复任务\n", topic.Id, len(fixes))
 	}
 }
 
@@ -891,11 +895,12 @@ func (c Client) joinAttachmentPath(name string) string {
 
 func (c *Client) GetAttachment(url string) (*ResponseReader, error) {
 	log.Printf("获取附件: %s\n", url)
+	if c.attachCfg == nil {
+		return nil, fmt.Errorf("附件配置未加载")
+	}
 
-	// 创建请求并设置超时和头部信息
-	rc := InitReqClient().SetTimeout(c.attachCfg.Base.Timeout)
+	rc := c.reqClient
 
-	// 设置 User-Agent
 	uat := c.attachCfg.UserAgent.Type
 	uav := c.attachCfg.UserAgent.Value
 	if uat == "Random" {
@@ -904,7 +909,6 @@ func (c *Client) GetAttachment(url string) (*ResponseReader, error) {
 			keys = append(keys, k)
 		}
 		if len(keys) > 0 {
-			// 随机选择一个预定义的 User-Agent
 			randKey := keys[rand.Intn(len(keys))]
 			if agents, ok := c.attachCfg.predined[randKey]; ok {
 				uat = randKey
@@ -912,6 +916,7 @@ func (c *Client) GetAttachment(url string) (*ResponseReader, error) {
 			}
 		}
 	}
+
 	switch uat {
 	case "Random":
 	case "Chrome":
@@ -984,7 +989,7 @@ func (c *Client) processFixRecord(record fixRecord) {
 			continue
 		}
 
-		if !IsVaildImage(data) {
+		if !IsValidImage(data) {
 			log.Printf("文件 %s 不是有效的图片, 跳过修复\n", name)
 			continue
 		}
@@ -994,6 +999,6 @@ func (c *Client) processFixRecord(record fixRecord) {
 			log.Printf("写入文件 %s 失败: %s\n", name, e.Error())
 			continue
 		}
-		log.Printf("修复帖子 %d 的资源文件 %s 成功\n", record.topic.Id, name)
+		log.Printf("获取帖子 %d 的资源文件 %s 成功\n", record.topic.Id, name)
 	}
 }

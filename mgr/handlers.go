@@ -108,7 +108,7 @@ func toErr(msg string) gin.H {
 
 func (srv *Server) topicMiddleware() gin.HandlerFunc {
 	return func(c *gin.Context) {
-		token := c.GetHeader("Authorization")
+		token := strings.TrimSpace(strings.TrimPrefix(c.GetHeader("Authorization"), "Bearer "))
 		if token != srv.Cfg.Config.Token {
 			c.JSON(http.StatusUnauthorized, toErr("未授权"))
 			c.Abort()
@@ -487,25 +487,33 @@ func (srv *Server) replaySmile(c *gin.Context, name string) {
 	cache := srv.cache
 	if cache.smile == nil {
 		cache.lock.Lock()
-		defer cache.lock.Unlock()
-
-		data, e := efs.ReadFile("assets/smiles.json")
-		if e != nil {
-			c.JSON(http.StatusInternalServerError, "加载内嵌的 smiles.json 失败")
-			return
-		}
-		if smile, e := Unmarshal(data); e != nil {
-			c.JSON(http.StatusInternalServerError, "解析内嵌的 smiles.json 失败")
-			return
-		} else {
+		if cache.smile == nil {
+			data, e := efs.ReadFile("assets/smiles.json")
+			if e != nil {
+				cache.lock.Unlock()
+				c.JSON(http.StatusInternalServerError, "加载内嵌的 smiles.json 失败")
+				return
+			}
+			smile, e := Unmarshal(data)
+			if e != nil {
+				cache.lock.Unlock()
+				c.JSON(http.StatusInternalServerError, "解析内嵌的 smiles.json 失败")
+				return
+			}
 			dir, e := cache.topicRoot.SafeOpenRoot(SMILE_DIR)
 			if e != nil {
+				cache.lock.Unlock()
 				c.JSON(http.StatusInternalServerError, "获取表情目录失败")
 				return
 			}
 			smile.root = dir
 			cache.smile = smile
 		}
+		cache.lock.Unlock()
+	}
+	if cache.smile == nil {
+		c.JSON(http.StatusInternalServerError, "表情未初始化")
+		return
 	}
 
 	if srv.Cfg.Config.Smile == "web" {

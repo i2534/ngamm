@@ -26,7 +26,7 @@ fetch_ngapost2md() {
     if [ -f "$version_file" ]; then
         version=$(cat "$version_file")
     else
-        version="1.10.0"
+        version="1.10.1"
         echo "版本文件不存在, 使用默认版本 $version"
     fi
     

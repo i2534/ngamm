@@ -454,7 +454,7 @@ func CopyValue[T any](tar *T, val T) {
 	*tar = val
 }
 
-func IsVaildImage(data []byte) bool {
+func IsValidImage(data []byte) bool {
 	if len(data) < 12 {
 		return false
 	}

@@ -440,6 +440,10 @@ func (t *Topic) savePanRecords(records []*TransferRecord) error {
 
 func (srv *Server) topicPanRecords() func(c *gin.Context) {
 	return func(c *gin.Context) {
+		if srv.cache.pans == nil || len(srv.cache.pans.Pans) == 0 {
+			c.JSON(http.StatusServiceUnavailable, toErr("网盘未配置或未就绪"))
+			return
+		}
 		id, e := strconv.Atoi(c.Param("id"))
 
 		if e != nil {
@@ -497,6 +501,10 @@ func (srv *Server) topicPanRecords() func(c *gin.Context) {
 
 func (srv *Server) topicPanOperate() func(c *gin.Context) {
 	return func(c *gin.Context) {
+		if srv.cache.pans == nil || len(srv.cache.pans.Pans) == 0 {
+			c.JSON(http.StatusServiceUnavailable, toErr("网盘未配置或未就绪"))
+			return
+		}
 		id, e := strconv.Atoi(c.Param("id"))
 		if e != nil {
 			c.JSON(http.StatusBadRequest, toErr("无效的帖子 ID"))
@@ -576,6 +584,10 @@ func (srv *Server) topicPanOperate() func(c *gin.Context) {
 
 func (srv *Server) topicPan2Records() func(c *gin.Context) {
 	return func(c *gin.Context) {
+		if srv.cache.pans == nil || len(srv.cache.pans.Pans) == 0 {
+			c.JSON(http.StatusServiceUnavailable, toErr("网盘未配置或未就绪"))
+			return
+		}
 		id, e := strconv.Atoi(c.Param("id"))
 		if e != nil {
 			c.JSON(http.StatusBadRequest, toErr("无效的帖子 ID"))
@@ -602,6 +614,10 @@ func (srv *Server) topicPan2Records() func(c *gin.Context) {
 
 func (srv *Server) topicPan2Operate() func(c *gin.Context) {
 	return func(c *gin.Context) {
+		if srv.cache.pans == nil || len(srv.cache.pans.Pans) == 0 {
+			c.JSON(http.StatusServiceUnavailable, toErr("网盘未配置或未就绪"))
+			return
+		}
 		id, e := strconv.Atoi(c.Param("id"))
 		if e != nil {
 			c.JSON(http.StatusBadRequest, toErr("无效的帖子 ID"))

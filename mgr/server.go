@@ -136,6 +136,7 @@ func NewServer(cfg *SrvCfg, nga *Client) (*Server, error) {
 		cron:     cron.New(cron.WithLocation(TIME_LOC)),
 		cache: &cache{
 			lock:      &sync.RWMutex{},
+			topics:    NewSyncMap[int, *Topic](),
 			queue:     make(chan int, QUEUE_SIZE),
 			topicRoot: tr,
 		},

@@ -324,23 +324,23 @@ func (t *Topic) fixInvalidAssets(nga *Client) {
 
 	fixes := make(map[string]string)
 	for k, v := range m {
-		i := strings.Index(k, "_")
-		if i != -1 {
-			if _, e := strconv.Atoi(k[:i]); e == nil {
+		before, _, ok := strings.Cut(k, "_")
+		if ok {
+			if _, e := strconv.Atoi(before); e == nil {
 				f, e := t.root.OpenReader(k)
 				if e != nil {
 					log.Group(groupTopic).Printf("打开 %s 失败: %v\n", k, e)
 					continue
 				}
-				defer f.Close()
-
 				buf := make([]byte, 1024)
 				n, e := f.Read(buf)
+				f.Close()
 				if e != nil && e != io.EOF {
 					log.Group(groupTopic).Printf("读取 %s 失败: %v\n", k, e)
 					continue
 				}
-				if IsVaildImage(buf[:n]) {
+				// 无效内容（如 HTML 错误页）才需要重新拉取
+				if !IsValidImage(buf[:n]) {
 					log.Group(groupTopic).Printf("文件 %s 不是图片, 需要处理\n", k)
 					fixes[k] = v
 				}
