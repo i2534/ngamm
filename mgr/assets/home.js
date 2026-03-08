@@ -551,8 +551,9 @@ function init(hasToken, ngaBase) {
     };
 
 
+    const WITHOUT_MEDIA_STORAGE_KEY = 'withoutMedia';
     window.viewWithoutMedia = function () {
-        localStorage.setItem('withoutMedia', 'true');
+        localStorage.setItem(WITHOUT_MEDIA_STORAGE_KEY, 'true');
     };
 
     window.addEventListener('load', () => {
@@ -568,12 +569,12 @@ function init(hasToken, ngaBase) {
         const vwm = document.getElementById('viewWithoutMedia');
         vwm.addEventListener('change', (e) => {
             if (e.target.checked) {
-                localStorage.setItem('withoutMedia', 'true');
+                localStorage.setItem(WITHOUT_MEDIA_STORAGE_KEY, 'true');
             } else {
-                localStorage.removeItem('withoutMedia');
+                localStorage.removeItem(WITHOUT_MEDIA_STORAGE_KEY);
             }
         });
-        if (localStorage.getItem('withoutMedia') === 'true') {
+        if (localStorage.getItem(WITHOUT_MEDIA_STORAGE_KEY) === 'true') {
             vwm.checked = true;
         }
 

@@ -10,6 +10,7 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
+	"sort"
 	"strconv"
 	"strings"
 	"time"
@@ -24,6 +25,7 @@ const (
 	HTML_HEADER = "text/html; charset=utf-8"
 	SMILE_DIR   = "smile"
 	ATTACH_DIR  = "attachments"
+	MARKS_DIR   = "marks"
 )
 
 func (srv *Server) regHandlers() {
@@ -47,6 +49,7 @@ func (srv *Server) regHandlers() {
 		})
 		tg.GET("", srv.topicList())
 		tg.GET("/", srv.topicList())
+		tg.GET("/:id/:floor", srv.topicFloor())
 		tg.GET("/:id", srv.topicInfo())
 		tg.PUT("/:id", srv.topicAdd())
 		tg.POST("/:id", srv.topicUpdate())
@@ -92,6 +95,20 @@ func (srv *Server) regHandlers() {
 		}
 		pg2.GET("/:token/:id", srv.topicPan2Records())
 		pg2.POST("/:token/:id", srv.topicPan2Operate())
+	}
+
+	mg := r.Group("/mark")
+	{
+		if has {
+			// topic 方式: Authorization 头，路径无 token
+			mg.GET("/latest", srv.topicMiddleware(), srv.markLatest())
+			// view 方式: URL 带 :token
+			mg.GET("/:token/latest", srv.viewMiddleware(), srv.markLatest())
+			mg.POST("/:token/:id", srv.viewMiddleware(), srv.markTopic())
+		} else {
+			mg.GET("/:token/latest", srv.markLatest())
+			mg.POST("/:token/:id", srv.markTopic())
+		}
 	}
 
 	r.GET("/", srv.homePage())
@@ -168,6 +185,32 @@ func (srv *Server) topicInfo() func(c *gin.Context) {
 		}
 
 		c.JSON(http.StatusOK, topic)
+	}
+}
+
+func (srv *Server) topicFloor() func(c *gin.Context) {
+	return func(c *gin.Context) {
+		id, e := strconv.Atoi(c.Param("id"))
+		if e != nil {
+			c.JSON(http.StatusBadRequest, toErr("无效的帖子 ID"))
+			return
+		}
+		floor, e := strconv.Atoi(c.Param("floor"))
+		if e != nil || floor < 0 {
+			c.JSON(http.StatusBadRequest, toErr("无效的楼层"))
+			return
+		}
+		topic, has := srv.cache.topics.Get(id)
+		if !has {
+			c.JSON(http.StatusNotFound, toErr("未找到帖子"))
+			return
+		}
+		markdown, e := topic.ContentFloor(floor)
+		if e != nil {
+			c.JSON(http.StatusNotFound, toErr(e.Error()))
+			return
+		}
+		c.JSON(http.StatusOK, gin.H{"floor": floor, "data": markdown})
 	}
 }
 
@@ -786,6 +829,95 @@ func (srv *Server) topicForceReload() func(c *gin.Context) {
 		}
 
 		c.JSON(http.StatusOK, id)
+	}
+}
+
+func (srv *Server) markTopic() func(c *gin.Context) {
+	return func(c *gin.Context) {
+		id, e := strconv.Atoi(c.Param("id"))
+		if e != nil {
+			c.JSON(http.StatusBadRequest, toErr("无效的帖子 ID"))
+			return
+		}
+		rootAbs, e := srv.cache.topicRoot.AbsPath()
+		if e != nil {
+			c.JSON(http.StatusInternalServerError, toErr("获取帖子根目录失败"))
+			return
+		}
+		marksDir := filepath.Join(rootAbs, MARKS_DIR)
+		if e := os.MkdirAll(marksDir, COMMON_DIR_MODE); e != nil {
+			c.JSON(http.StatusInternalServerError, toErr("创建标记目录失败"))
+			return
+		}
+		fpath := filepath.Join(marksDir, time.Now().Format("2006-01-02")+".md")
+		idStr := strconv.Itoa(id)
+		if data, e := os.ReadFile(fpath); e == nil {
+			existing := make(map[string]bool)
+			for line := range strings.SplitSeq(strings.TrimSpace(string(data)), "\n") {
+				line = strings.TrimSpace(line)
+				if line != "" {
+					existing[line] = true
+				}
+			}
+			if existing[idStr] {
+				c.JSON(http.StatusOK, gin.H{"ok": true, "already": true})
+				return
+			}
+		}
+		f, e := os.OpenFile(fpath, os.O_APPEND|os.O_CREATE|os.O_WRONLY, COMMON_FILE_MODE)
+		if e != nil {
+			c.JSON(http.StatusInternalServerError, toErr("写入标记文件失败"))
+			return
+		}
+		_, e = f.WriteString(idStr + "\n")
+		f.Close()
+		if e != nil {
+			c.JSON(http.StatusInternalServerError, toErr("写入标记文件失败"))
+			return
+		}
+		c.JSON(http.StatusOK, gin.H{"ok": true})
+	}
+}
+
+func (srv *Server) markLatest() func(c *gin.Context) {
+	return func(c *gin.Context) {
+		rootAbs, e := srv.cache.topicRoot.AbsPath()
+		if e != nil {
+			c.JSON(http.StatusInternalServerError, toErr("获取帖子根目录失败"))
+			return
+		}
+		marksDir := filepath.Join(rootAbs, MARKS_DIR)
+		entries, e := os.ReadDir(marksDir)
+		if e != nil {
+			if os.IsNotExist(e) {
+				c.JSON(http.StatusNotFound, toErr("暂无标记文件"))
+				return
+			}
+			c.JSON(http.StatusInternalServerError, toErr("读取标记目录失败"))
+			return
+		}
+		var mdFiles []string
+		for _, e := range entries {
+			if !e.IsDir() && strings.HasSuffix(e.Name(), ".md") {
+				mdFiles = append(mdFiles, e.Name())
+			}
+		}
+		if len(mdFiles) == 0 {
+			c.JSON(http.StatusNotFound, toErr("暂无标记文件"))
+			return
+		}
+		sort.Sort(sort.Reverse(sort.StringSlice(mdFiles)))
+		latestName := mdFiles[0]
+		date := strings.TrimSuffix(latestName, ".md")
+		fpath := filepath.Join(marksDir, latestName)
+		data, e := os.ReadFile(fpath)
+		if e != nil {
+			c.JSON(http.StatusInternalServerError, toErr("读取标记文件失败"))
+			return
+		}
+		c.Header("X-Mark-Date", date)
+		c.Header("Content-Disposition", fmt.Sprintf("inline; filename=%q", latestName))
+		c.Data(http.StatusOK, "text/markdown; charset=utf-8", data)
 	}
 }
 

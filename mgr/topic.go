@@ -279,6 +279,69 @@ func (t *Topic) ContentPart(index int) (string, bool, error) {
 	return "", false, errors.New("未找到帖子内容")
 }
 
+var regexFloorHead = regexp.MustCompile(`(\d+)\.\[`)
+
+// ContentFloor 返回指定楼层的 markdown 块（楼层从 0 开始，0 为主楼）
+func (t *Topic) ContentFloor(floor int) (string, error) {
+	full, e := t.fullContent()
+	if e != nil {
+		return "", e
+	}
+	lines := strings.Split(full, "\n")
+	var buf strings.Builder
+	inBlock := false
+	for _, line := range lines {
+		if strings.HasPrefix(line, "##### ") {
+			m := regexFloorHead.FindStringSubmatch(line)
+			n := -1
+			if len(m) > 1 {
+				n, _ = strconv.Atoi(m[1])
+			}
+			if n == floor {
+				inBlock = true
+				buf.Reset()
+				buf.WriteString(line)
+				buf.WriteString("\n")
+			} else {
+				inBlock = false
+			}
+			continue
+		}
+		if inBlock {
+			buf.WriteString(line)
+			buf.WriteString("\n")
+		}
+	}
+	if buf.Len() == 0 {
+		return "", fmt.Errorf("未找到楼层 %d", floor)
+	}
+	return strings.TrimSuffix(buf.String(), "\n"), nil
+}
+
+func (t *Topic) fullContent() (string, error) {
+	if !t.root.IsExist(POST_MARKDOWN_1ST) {
+		return t.ContentCore()
+	}
+	var b strings.Builder
+	for i := 1; ; i++ {
+		part, hasNext, e := t.ContentPart(i)
+		if e != nil {
+			if i == 1 {
+				return "", e
+			}
+			break
+		}
+		if i > 1 {
+			b.WriteString("\n")
+		}
+		b.WriteString(part)
+		if !hasNext {
+			break
+		}
+	}
+	return b.String(), nil
+}
+
 func (t *Topic) Stop() {
 	t.timers.EAC(func(_ time.Duration, timer *time.Timer) {
 		timer.Stop()

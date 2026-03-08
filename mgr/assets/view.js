@@ -302,9 +302,13 @@ function render(ngaBase, id, token, content, replaceAttachment, hasMoreContent) 
             alert('未找到指定楼层');
         }
     };
+    const OPTION_MENU_STORAGE_KEY = 'optionMenu';
     window.toggleOptionMenu = function () {
         const menu = document.querySelector('#optionMenu');
         menu.classList.toggle('hidden');
+        try {
+            localStorage.setItem(OPTION_MENU_STORAGE_KEY, menu.classList.contains('hidden') ? 'false' : 'true');
+        } catch (e) { }
     };
     window.copyTopicId = function () {
         const menu = document.querySelector('#optionMenu');
@@ -339,6 +343,23 @@ function render(ngaBase, id, token, content, replaceAttachment, hasMoreContent) 
                 alert(`强制重新下载失败: ${e}`);
             });
         }
+    };
+    window.markTopic = function () {
+        fetch(`${origin}/mark/${token}/${id}`, { method: 'POST' })
+            .then(r => {
+                if (r.ok) {
+                    const btn = document.getElementById('markTopicBtn');
+                    if (btn) btn.innerHTML = '标记  <span style="color:#0a0;font-weight:bold">✓</span>';
+                } else {
+                    return r.json().then(data => {
+                        alert(data.error || '标记失败: ' + r.statusText);
+                    }).catch(() => alert('标记失败: ' + r.statusText));
+                }
+            })
+            .catch(e => {
+                console.error('标记失败:', e);
+                alert('标记失败: ' + e.message);
+            });
     };
     window.toggleViewMedia = function () {
         const e = document.querySelector('#toggleViewMedia');
@@ -877,6 +898,12 @@ function render(ngaBase, id, token, content, replaceAttachment, hasMoreContent) 
             btn.textContent = '显示隐藏图片';
             btn.setAttribute('vwm', 'true');
         }
+        try {
+            const menu = document.querySelector('#optionMenu');
+            if (menu && localStorage.getItem(OPTION_MENU_STORAGE_KEY) === 'true') {
+                menu.classList.remove('hidden');
+            }
+        } catch (e) { }
 
         const c = document.querySelector('#content');
         if (c) {

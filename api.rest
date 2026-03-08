@@ -1,34 +1,133 @@
 @host = localhost
 @port = 5842
-
 @url = http://{{host}}:{{port}}
 
-### Help
-GET {{url}}/help
+# 启用 token 时，topic / mark(topic 方式) 需加请求头
+# Authorization: Bearer YOUR_TOKEN
+# 或 Authorization: YOUR_TOKEN
 
-#### Topics(帖子)
-### List
+### 首页
+GET {{url}}/
+
+### 静态资源
+GET {{url}}/favicon.ico
+GET {{url}}/asset/view.css
+
+###
+# Topic 帖子（需 token 时加 Authorization 头）
+###
+### 帖子列表
 GET {{url}}/topic
 
-@tid = 1
-### Info
+### 帖子详情
+@tid = 46291039
 GET {{url}}/topic/{{tid}}
 
-# Error
-@tid = 2
-### Create
+### 帖子指定楼层（0 主楼，1 一楼…）
+GET {{url}}/topic/{{tid}}/0
+GET {{url}}/topic/{{tid}}/1
+
+### 添加帖子
 PUT {{url}}/topic/{{tid}}
 
-### Delete
-DELETE {{url}}/topic/{{tid}}
-
-### Update
+### 更新帖子（如 cron）
 POST {{url}}/topic/{{tid}}
 Content-Type: application/json
 
 {
-    "UpdateCron": "@every 2m"
+  "UpdateCron": "@every 2h",
+  "MaxRetryCount": 3
 }
 
-### View
-GET {{url}}/view/{{tid}}
+### 删除帖子
+DELETE {{url}}/topic/{{tid}}
+
+### 立即刷新
+POST {{url}}/topic/fresh/{{tid}}
+
+###
+# Subscribe 订阅
+###
+@uid = 22195754
+### 订阅状态
+GET {{url}}/subscribe/{{uid}}
+
+### 订阅
+POST {{url}}/subscribe/{{uid}}
+Content-Type: application/json
+
+["关键词1", "关键词2"]
+
+### 取消订阅
+DELETE {{url}}/subscribe/{{uid}}
+
+### 批量订阅状态
+POST {{url}}/subscribe/batch
+Content-Type: application/json
+
+[22195754, 65362886]
+
+###
+# View 查看（URL 中 token 为 tokenHash，非原始 token）
+###
+@tokenHash = a906256c
+### 查看页 HTML
+GET {{url}}/view/{{tokenHash}}/{{tid}}
+
+### 查看页分片（更多内容）
+POST {{url}}/view/{{tokenHash}}/{{tid}}
+Content-Type: application/json
+
+{"index": 2}
+
+### 查看页资源（附件/表情等）
+GET {{url}}/view/{{tokenHash}}/{{tid}}/post-001.md
+# 表情: GET {{url}}/view/{{tokenHash}}/smile/xxx
+
+### 强制重新下载
+DELETE {{url}}/view/{{tokenHash}}/{{tid}}
+
+###
+# Pan 网盘（需 token 时 URL 用 tokenHash）
+###
+### 网盘记录
+GET {{url}}/pan/{{tokenHash}}/{{tid}}
+
+### 网盘操作
+POST {{url}}/pan/{{tokenHash}}/{{tid}}
+Content-Type: application/json
+
+{"opt": "save", "url": "https://pan.baidu.com/s/xxx"}
+
+###
+# Pan2 网盘详情（需 token 时 URL 用 tokenHash）
+###
+### 网盘存在情况
+GET {{url}}/pan2/{{tokenHash}}/{{tid}}
+
+### 网盘操作（移动/删除）
+POST {{url}}/pan2/{{tokenHash}}/{{tid}}
+Content-Type: application/json
+
+{"name": "baidu", "act": "move"}
+# act: move | delete
+
+###
+# Mark 标记（两种方式）
+###
+# 方式一：topic 鉴权，路径无 token
+### 最新标记文件（需 Authorization 头）
+GET {{url}}/mark/latest
+
+# 方式二：view 鉴权，URL 带 tokenHash
+### 最新标记文件
+GET {{url}}/mark/{{tokenHash}}/latest
+
+### 打标记
+POST {{url}}/mark/{{tokenHash}}/{{tid}}
+
+###
+# 测试
+###
+GET {{url}}/to
+GET {{url}}/ts

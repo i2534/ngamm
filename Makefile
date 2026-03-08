@@ -21,7 +21,7 @@ run:
 	export TOKEN="abc" && go run . -m data/np2md/ngapost2md
 
 changelog:
-	git log --pretty=format:"- %ad (%h): %s " --date=format-local:'%Y-%m-%d %H:%M' > CHANGELOG.md
+	git log --pretty=format:"- %ad (%h): %s%n%b%n" --date=format-local:'%Y-%m-%d %H:%M' | sed '/^-/!s/^/  /' > CHANGELOG.md
 
 fetch_ngapost2md:
 	sh entrypoint.sh fetch ./data
